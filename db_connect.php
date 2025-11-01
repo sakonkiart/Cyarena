@@ -66,7 +66,7 @@ function db_connect() {
         $host = '127.0.0.1'; // หรือ 'localhost'
         $user = 'root';
         $pass = '';
-        $db    = defaultdb; // ✅ ใช้ชื่อฐานข้อมูลที่ถูกต้อง
+        $db   = 'defaultdb'; // ✅ FIX 1: เพิ่มเครื่องหมาย quotes
         $port = 3306;         
 
         $conn = mysqli_init();
@@ -86,9 +86,14 @@ try {
     $conn = db_connect();
 } catch (Throwable $e) {
     http_response_code(500);
-    // 💡 แก้ไข: แสดงข้อความ Error ใน Log ของ Render
     error_log("DB CONNECTION FAILED: " . $e->getMessage()); 
-    // หากต้องการแสดงข้อความ Error บนหน้าจอ (เฉพาะช่วง Debug)
-    // echo "DB CONNECTION FAILED: " . $e->getMessage(); 
-    exit; 
+    
+    // ✅ FIX 2: แสดง Error แบบ User-friendly
+    if (getenv('RENDER') || getenv('DB_HOST')) {
+        // Production: แสดงข้อความทั่วไป
+        die('Database connection error. Please contact support.');
+    } else {
+        // Development: แสดง Error detail
+        die('DB CONNECTION FAILED: ' . htmlspecialchars($e->getMessage()));
+    }
 }
