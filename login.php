@@ -19,7 +19,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $found = false;
 
         // --- 1. ตรวจสอบลูกค้า ---
-        // FIX: ระบุ cy_arena_db.Tbl_Customer เพื่อแก้ปัญหา Table doesn't exist
+        // FIX: ระบุ defaultdb.Tbl_Customer เพื่อแก้ปัญหา Table doesn't exist
         $sql_customer = "SELECT CustomerID AS ID, FirstName, Password, AvatarPath FROM defaultdb.Tbl_Customer WHERE Username = ?";
         
         $stmt = $conn->prepare($sql_customer);
@@ -94,7 +94,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->close();
     }
 }
-// (ส่วน HTML ของหน้า Login จะอยู่ด้านล่าง... และควรแสดง $message)
+}
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -105,196 +105,197 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Kanit:wght@700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --primary: #2563eb;
-  --primary-dark: #1e40af;
-  --primary-light: #3b82f6;
-  --gray-100: #f5f5f4;
-  --gray-700: #44403c;
-  --gray-900: #1c1917;
-  --danger: #dc2626;
-  --spacing: 1.5rem;
-  --error: #dc2626; 
+    --primary: #2563eb;
+    --primary-dark: #1e40af;
+    --primary-light: #3b82f6;
+    --gray-100: #f5f5f4;
+    --gray-700: #44403c;
+    --gray-900: #1c1917;
+    --danger: #dc2626;
+    --spacing: 1.5rem;
+    --error: #dc2626;  
 }
 
 body {
-  margin: 0;
-  font-family: 'Sarabun', sans-serif;
-  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  color: var(--gray-900);
-  padding: 1.5rem; 
-  box-sizing: border-box;
+    margin: 0;
+    font-family: 'Sarabun', sans-serif;
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    color: var(--gray-900);
+    padding: 1.5rem; 
+    box-sizing: border-box;
 }
 
 /* ===== CARD ===== */
 .login-card {
-  background: #fff;
-  border-radius: 20px;
-  padding: 2.5rem 2rem;
-  max-width: 420px; 
-  min-width: 300px; 
-  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-  animation: fadeIn 0.7s ease-out;
+    background: #fff;
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    max-width: 420px; 
+    min-width: 300px; 
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    animation: fadeIn 0.7s ease-out;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* ===== LOGO ===== */
 .logo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.8rem;
 }
 
 .logo img {
-  width: 220px;
-  max-width: 80%;
-  height: auto;
-  display: block;
-  margin: 0 auto 10px auto;
-  transition: transform 0.3s ease, filter 0.3s ease;
+    width: 220px;
+    max-width: 80%;
+    height: auto;
+    display: block;
+    margin: 0 auto 10px auto;
+    transition: transform 0.3s ease, filter 0.3s ease;
 }
 
 .logo img:hover {
-  transform: scale(1.05);
-  filter: drop-shadow(0 0 8px rgba(37,99,235,0.3));
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 8px rgba(37,99,235,0.3));
 }
 
 /* ===== FORM ===== */
 h2 {
-  text-align: center;
-  font-weight: 800;
-  font-family: 'Kanit', sans-serif;
-  color: var(--gray-900);
-  margin-bottom: 1rem;
+    text-align: center;
+    font-weight: 800;
+    font-family: 'Kanit', sans-serif;
+    color: var(--gray-900);
+    margin-bottom: 1rem;
 }
 p.desc {
-  text-align: center;
-  color: var(--gray-700);
-  margin-bottom: 2rem;
+    text-align: center;
+    color: var(--gray-700);
+    margin-bottom: 2rem;
 }
 .form-group {
-  margin-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
 }
 label {
-  display: block;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
+    display: block;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
 }
 input {
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid var(--gray-100);
-  border-radius: 12px;
-  font-size: 1rem;
-  transition: all 0.3s;
-  box-sizing: border-box; 
+    width: 100%;
+    padding: 0.875rem 1rem;
+    border: 2px solid var(--gray-100);
+    border-radius: 12px;
+    font-size: 1rem;
+    transition: all 0.3s;
+    box-sizing: border-box; 
 }
 input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
-  outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
+    outline: none;
 }
 
 /* ===== BUTTON ===== */
 .btn {
-  width: 100%;
-  padding: 1rem;
-  font-weight: 800;
-  font-family: 'Kanit', sans-serif;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-size: 1.125rem;
+    width: 100%;
+    padding: 1rem;
+    font-weight: 800;
+    font-family: 'Kanit', sans-serif;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 1.125rem;
 }
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary), var(--primary-light));
-  color: white;
-  box-shadow: 0 4px 12px rgba(37,99,235,0.4);
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    color: white;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.4);
 }
 .btn-primary:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(37,99,235,0.6);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(37,99,235,0.6);
 }
 
 /* ===== MESSAGE & FOOTER ===== */
 .message {
-  margin-top: 1rem;
-  color: var(--error);
-  text-align: center;
-  font-weight: 700;
-  padding: 0.75rem;
-  border-radius: 8px;
-  background-color: rgba(220, 38, 38, 0.08); 
-  border: 1px solid var(--danger);
+    margin-top: 1rem;
+    color: var(--error);
+    text-align: center;
+    font-weight: 700;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background-color: rgba(220, 38, 38, 0.08); 
+    border: 1px solid var(--danger);
 }
 .footer-text {
-  text-align: center;
-  margin-top: 1.75rem;
-  color: var(--gray-700);
-  font-weight: 600;
+    text-align: center;
+    margin-top: 1.75rem;
+    color: var(--gray-700);
+    font-weight: 600;
 }
 .footer-text a {
-  color: var(--primary);
-  text-decoration: none;
-  font-weight: 700;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 700;
 }
 .footer-text a:hover { text-decoration: underline; }
 
 @media (max-width: 480px) {
-  body { padding: 0; } 
-  .login-card { 
-      width: 100vw; 
-      max-width: none;
-      border-radius: 0; 
-      padding: 2rem 1rem;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-  }
-  .logo img { width: 160px; margin-bottom: 8px; }
+    body { padding: 0; } 
+    .login-card { 
+        width: 100vw; 
+        max-width: none;
+        border-radius: 0; 
+        padding: 2rem 1rem;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .logo img { width: 160px; margin-bottom: 8px; }
 }
 </style>
 </head>
 <body>
 
 <div class="login-card">
-  <div class="logo">
-    <img src="images/cy.png" alt="CY Arena Logo">
-  </div>
-
-  <h2>เข้าสู่ระบบ</h2>
-  <p class="desc">กรอกชื่อผู้ใช้และรหัสผ่านของคุณเพื่อเข้าสู่ระบบ</p>
-
-  <form method="POST">
-    <div class="form-group">
-      <label for="username">👤 ชื่อผู้ใช้</label>
-      <input type="text" name="username" id="username" required placeholder="กรอกชื่อผู้ใช้">
+    <div class="logo">
+        <!-- Placeholder Image: Since we don't have the original 'images/cy.png' -->
+        <img src="https://placehold.co/220x80/2563eb/ffffff?text=CY+Arena" alt="CY Arena Logo">
     </div>
-    <div class="form-group">
-      <label for="password">🔒 รหัสผ่าน</label>
-      <input type="password" name="password" id="password" required placeholder="กรอกรหัสผ่าน">
+
+    <h2>เข้าสู่ระบบ</h2>
+    <p class="desc">กรอกชื่อผู้ใช้และรหัสผ่านของคุณเพื่อเข้าสู่ระบบ</p>
+
+    <form method="POST">
+        <div class="form-group">
+            <label for="username">👤 ชื่อผู้ใช้</label>
+            <input type="text" name="username" id="username" required placeholder="กรอกชื่อผู้ใช้">
+        </div>
+        <div class="form-group">
+            <label for="password">🔒 รหัสผ่าน</label>
+            <input type="password" name="password" id="password" required placeholder="กรอกรหัสผ่าน">
+        </div>
+        <button type="submit" class="btn btn-primary">เข้าสู่ระบบ 🚀</button>
+    </form>
+
+    <?php if ($message): ?>
+        <div class="message"><?= htmlspecialchars($message) ?></div>
+    <?php endif; ?>
+
+    <div class="footer-text">
+        ยังไม่มีบัญชี? <a href="register.php">สมัครสมาชิกฟรี</a>
     </div>
-    <button type="submit" class="btn btn-primary">เข้าสู่ระบบ 🚀</button>
-  </form>
-
-  <?php if ($message): ?>
-    <div class="message"><?= htmlspecialchars($message) ?></div>
-  <?php endif; ?>
-
-  <div class="footer-text">
-    ยังไม่มีบัญชี? <a href="register.php">สมัครสมาชิกฟรี</a>
-  </div>
 </div>
 
 </body>
