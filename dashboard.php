@@ -53,7 +53,7 @@ SELECT
       ELSE 'available'
     END AS StatusNow
 FROM Tbl_Venue v
-JOIN Tbl_Venue_type vt ON v.VenueTypeID = vt.VenueTypeID
+JOIN Tbl_Venue_Type vt ON v.VenueTypeID = vt.VenueTypeID
 LEFT JOIN Tbl_Review r ON v.VenueID = r.VenueID
 GROUP BY v.VenueID
 ORDER BY v.VenueName;

@@ -18,7 +18,7 @@ include 'db_connect.php';
 
 // Fetch venue types for dropdown
 $types = [];
-$typeSql = "SELECT VenueTypeID, TypeName FROM Tbl_Venue_type ORDER BY TypeName ASC";
+$typeSql = "SELECT VenueTypeID, TypeName FROM Tbl_Venue_Type ORDER BY TypeName ASC";
 if ($res = $conn->query($typeSql)) {
     while ($row = $res->fetch_assoc()) { $types[] = $row; }
     $res->free();
@@ -42,7 +42,7 @@ $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 if ($search !== '') {
     $like = '%' . $search . '%';
     $stmt = $conn->prepare("SELECT v.*, t.TypeName FROM Tbl_Venue v 
-        JOIN Tbl_Venue_type t ON v.VenueTypeID = t.VenueTypeID
+        JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
         WHERE v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?
         ORDER BY v.VenueID DESC");
     $stmt->bind_param("sss", $like, $like, $like);
@@ -51,7 +51,7 @@ if ($search !== '') {
     $stmt->close();
 } else {
     $sql = "SELECT v.*, t.TypeName FROM Tbl_Venue v 
-            JOIN Tbl_Venue_type t ON v.VenueTypeID = t.VenueTypeID
+            JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
             ORDER BY v.VenueID DESC";
     if ($res = $conn->query($sql)) {
         $venues = $res->fetch_all(MYSQLI_ASSOC);
