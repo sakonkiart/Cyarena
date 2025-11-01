@@ -84,7 +84,7 @@ $result = $conn->query($sql);
 
 body {
   font-family: 'Kanit', sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #667eea 0%, #2528E7FF 100%);
   min-height: 100vh;
   padding: 40px 20px;
   color: var(--gray-900);
