@@ -5,6 +5,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 include 'db_connect.php';
+@$conn->query("SET time_zone = '+07:00'");
 
 $userName = $_SESSION['user_name'];
 $role     = $_SESSION['role'] ?? 'customer';
