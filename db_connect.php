@@ -1,7 +1,7 @@
 <?php
 // เปิด error แบบโยน Exception (อ่านง่ายเวลา debug)
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-@$conn->query("SET time_zone = '+07:00'");
+
 
 function db_connect() {
     $isCloud = getenv('DB_HOST') && getenv('DB_USER') && getenv('DB_NAME');
@@ -48,6 +48,7 @@ function db_connect() {
         }
 
         mysqli_ssl_set($conn, null, null, $tmp_ca, null, null);
+        @$conn->query("SET time_zone = '+07:00'");
 
         if (!@mysqli_real_connect(
             $conn,
