@@ -62,6 +62,8 @@ if ($res = $conn->query($sql)) {
   $venues = $res->fetch_all(MYSQLI_ASSOC);
 }
 
+echo "<!-- Debug: Total venues = " . count($venues) . " -->\n";
+
 // นับจำนวนสนามที่พร้อมให้บริการ
 $availableCount = count(array_filter($venues, function($v) {
   return $v['StatusNow'] === 'available';
