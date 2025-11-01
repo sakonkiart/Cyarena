@@ -6,6 +6,33 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
 }
 include 'db_connect.php';
 
+// ✅ เริ่มใช้งานโปรโมชั่นทันที
+if (isset($_GET['start'])) {
+    $id = (int)$_GET['start'];
+    $sql = "UPDATE Tbl_Promotion 
+            SET StartDate = CURRENT_TIMESTAMP,
+                EndDate = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 1 YEAR)
+            WHERE PromotionID = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    header("Location: promotion_manage.php");
+    exit;
+}
+
+// ✅ หยุดใช้งานโปรโมชั่นทันที
+if (isset($_GET['stop'])) {
+    $id = (int)$_GET['stop'];
+    $sql = "UPDATE Tbl_Promotion 
+            SET EndDate = CURRENT_TIMESTAMP
+            WHERE PromotionID = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    header("Location: promotion_manage.php");
+    exit;
+}
+
 // ✅ ลบโปรโมชั่น
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
@@ -217,7 +244,7 @@ button:hover {
           <td>
             <div class="action-btns">
               <?php if ($row['StatusPromo'] == 'upcoming' || $row['StatusPromo'] == 'expired'): ?>
-                <a href="promotion_status.php?id=<?php echo $row['PromotionID']; ?>&action=start" 
+                <a href="?start=<?php echo $row['PromotionID']; ?>" 
                    class="btn btn-success" 
                    onclick="return confirm('เริ่มใช้งานโปรโมชั่นนี้ทันทีหรือไม่?')">
                    🟢 เริ่มใช้งาน
@@ -225,7 +252,7 @@ button:hover {
               <?php endif; ?>
               
               <?php if ($row['StatusPromo'] == 'active'): ?>
-                <a href="promotion_status.php?id=<?php echo $row['PromotionID']; ?>&action=stop" 
+                <a href="?stop=<?php echo $row['PromotionID']; ?>" 
                    class="btn btn-warning" 
                    onclick="return confirm('หยุดใช้งานโปรโมชั่นนี้ทันทีหรือไม่?')">
                    🔴 หยุดใช้งาน
