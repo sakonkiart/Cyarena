@@ -1,41 +1,9 @@
-<?php
-session_start();
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit;
-}
-$customerName = $_SESSION['user_name'];
-
-include 'db_connect.php';
-
-if (!isset($_GET['venue_id']) || !is_numeric($_GET['venue_id'])) {
-    die("Error: ไม่พบรหัสสนามกีฬา");
-}
-$venue_id = (int)$_GET['venue_id'];
-
-$sql = "SELECT v.*, vt.TypeName
-        FROM Tbl_Venue AS v
-        JOIN Tbl_Venue_Type AS vt ON v.VenueTypeID = vt.VenueTypeID
-        WHERE v.VenueID = ?";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $venue_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows == 1) {
-    $venue = $result->fetch_assoc();
-} else {
-    die("Error: ไม่พบสนามกีฬานี้ หรือสนามไม่พร้อมให้บริการ");
-}
-$stmt->close();
-$conn->close();
-?>
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>จองสนาม - <?php echo htmlspecialchars($venue['VenueName']); ?></title>
+<title>จองสนาม - CY Arena</title>
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <style>
@@ -53,7 +21,6 @@ body {
   padding-bottom: 40px;
 }
 
-/* Header */
 .header {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
@@ -105,14 +72,12 @@ body {
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
 }
 
-/* Container */
 .container {
   max-width: 800px;
   margin: 40px auto;
   padding: 0 20px;
 }
 
-/* Venue Info Card */
 .venue-card {
   background: white;
   border-radius: 20px;
@@ -200,7 +165,6 @@ body {
   font-size: 1.5rem;
 }
 
-/* Booking Form Card */
 .booking-card {
   background: white;
   border-radius: 20px;
@@ -297,7 +261,6 @@ select:focus {
   font-weight: 600;
 }
 
-/* Promo Section */
 .promo-group {
   display: flex;
   gap: 12px;
@@ -349,7 +312,45 @@ select:focus {
   border: 2px solid #ef4444;
 }
 
-/* Submit Button */
+/* 💰 Price Summary Box */
+.price-summary {
+  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+  border: 2px solid #0ea5e9;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 25px;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.price-row.total {
+  border-top: 2px solid #0ea5e9;
+  padding-top: 12px;
+  margin-top: 12px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #0369a1;
+}
+
+.price-row .label {
+  font-weight: 500;
+}
+
+.price-row .value {
+  font-weight: 700;
+}
+
+.discount-value {
+  color: #dc2626;
+}
+
 .submit-btn {
   width: 100%;
   background: linear-gradient(135deg, #1e40af, #3b82f6);
@@ -366,6 +367,7 @@ select:focus {
   align-items: center;
   justify-content: center;
   gap: 10px;
+  margin-top: 25px;
 }
 
 .submit-btn:hover:not(:disabled) {
@@ -380,7 +382,6 @@ select:focus {
   box-shadow: none;
 }
 
-/* Back Link */
 .back-link {
   display: inline-flex;
   align-items: center;
@@ -401,7 +402,6 @@ select:focus {
   transform: translateX(-5px);
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   .header {
     padding: 15px 20px;
@@ -441,7 +441,7 @@ select:focus {
 <header class="header">
   <div class="logo"><i class="fas fa-futbol"></i> CY Arena</div>
   <div class="user-info">
-    <span class="user-name">สวัสดี, <?php echo htmlspecialchars($customerName); ?></span>
+    <span class="user-name">สวัสดี, ผู้ใช้</span>
     <a href="logout.php" class="logout-btn">
       <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
     </a>
@@ -449,31 +449,28 @@ select:focus {
 </header>
 
 <div class="container">
-  <!-- Venue Info Card -->
   <div class="venue-card">
     <div class="venue-header">
-      <h1 class="venue-title"><?php echo htmlspecialchars($venue['VenueName']); ?></h1>
+      <h1 class="venue-title">สนามฟุตบอล A</h1>
       <span class="venue-type">
-        <i class="fas fa-tag"></i> <?php echo htmlspecialchars($venue['TypeName']); ?>
+        <i class="fas fa-tag"></i> สนามฟุตบอล
       </span>
     </div>
 
     <div class="venue-details">
-      <?php if (!empty($venue['Description'])): ?>
       <div class="detail-row">
         <div class="detail-icon"><i class="fas fa-info-circle"></i></div>
         <div class="detail-content">
           <div class="detail-label">รายละเอียดสนาม</div>
-          <div class="detail-value"><?php echo nl2br(htmlspecialchars($venue['Description'])); ?></div>
+          <div class="detail-value">สนามหญ้าเทียม ขนาดมาตรฐาน 7 คน</div>
         </div>
       </div>
-      <?php endif; ?>
 
       <div class="detail-row">
         <div class="detail-icon"><i class="fas fa-money-bill-wave"></i></div>
         <div class="detail-content">
           <div class="detail-label">ราคา / ชั่วโมง</div>
-          <div class="detail-value price-highlight">฿<?php echo number_format($venue['PricePerHour'], 2); ?></div>
+          <div class="detail-value price-highlight">฿100.00</div>
         </div>
       </div>
 
@@ -481,34 +478,29 @@ select:focus {
         <div class="detail-icon"><i class="fas fa-clock"></i></div>
         <div class="detail-content">
           <div class="detail-label">เวลาทำการ</div>
-          <div class="detail-value">
-            <?php echo date("H:i", strtotime($venue['TimeOpen'])); ?> - 
-            <?php echo date("H:i", strtotime($venue['TimeClose'])); ?> น.
-          </div>
+          <div class="detail-value">09:00 - 21:00 น.</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Booking Form Card -->
   <div class="booking-card">
     <h2 class="section-title">
       <i class="fas fa-calendar-check"></i> กรอกรายละเอียดการจอง
     </h2>
 
     <form action="confirm_booking.php" method="POST" id="bookingForm">
-      <input type="hidden" name="venue_id" id="venue_id" value="<?php echo (int)$venue_id; ?>">
+      <input type="hidden" name="venue_id" id="venue_id" value="1">
       <input type="hidden" name="promotion_id" id="promotion_id" value="">
       <input type="hidden" name="total_price" id="total_price" value="">
       <input type="hidden" name="start_time" id="start_time">
       <input type="hidden" name="end_time" id="end_time">
-      <input type="hidden" id="open_24" value="<?= date('H:i', strtotime($venue['TimeOpen'])) ?>">
-      <input type="hidden" id="close_24" value="<?= date('H:i', strtotime($venue['TimeClose'])) ?>">
+      <input type="hidden" id="open_24" value="09:00">
+      <input type="hidden" id="close_24" value="21:00">
 
       <div class="form-group">
         <label><i class="far fa-calendar"></i> เลือกวันที่</label>
-        <input type="date" name="booking_date" id="booking_date" required 
-               min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>">
+        <input type="date" name="booking_date" id="booking_date" required>
       </div>
 
       <div class="form-group">
@@ -531,7 +523,7 @@ select:focus {
 
       <div class="form-group">
         <label><i class="fas fa-hourglass-half"></i> จำนวนชั่วโมง</label>
-        <input type="number" name="hours" id="hours" min="1" step="0.5" value="1" required>
+        <input type="number" name="hours" id="hours" min="1" step="0.5" value="3" required>
       </div>
 
       <div class="form-group">
@@ -551,6 +543,22 @@ select:focus {
         <div id="promoResult"></div>
       </div>
 
+      <!-- 💰 สรุปราคา -->
+      <div class="price-summary">
+        <div class="price-row">
+          <span class="label">ราคาต้นทุน:</span>
+          <span class="value" id="base_price_display">฿0.00</span>
+        </div>
+        <div class="price-row" id="discount_row" style="display: none;">
+          <span class="label">ส่วนลด:</span>
+          <span class="value discount-value" id="discount_display">-฿0.00</span>
+        </div>
+        <div class="price-row total">
+          <span class="label">💵 ยอดชำระ:</span>
+          <span class="value" id="net_price_display">฿0.00</span>
+        </div>
+      </div>
+
       <button type="submit" class="submit-btn" id="submitBtn">
         <i class="fas fa-calendar-check"></i> ยืนยันการจอง
       </button>
@@ -563,6 +571,11 @@ select:focus {
 </div>
 
 <script>
+// 🎯 ตัวแปรสำหรับเก็บข้อมูลโปรโมชั่น
+let currentPromoData = null;
+const pricePerHour = 100; // ตัวอย่าง ราคาต่อชั่วโมง
+
+// ฟังก์ชันตรวจสอบโปรโมชั่น
 function checkPromotion() {
   const code = document.getElementById('promoCode').value.trim();
   const resultEl = document.getElementById('promoResult');
@@ -570,25 +583,37 @@ function checkPromotion() {
   if (!code) {
     resultEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> กรุณากรอกรหัสโปรโมชั่น';
     resultEl.className = 'show error';
+    currentPromoData = null;
+    document.getElementById('promotion_id').value = '';
+    computeEnd(); // คำนวณใหม่
     return;
   }
   
+  // เรียก API ตรวจสอบโปรโมชั่น
   fetch('promotion_check.php?code=' + encodeURIComponent(code))
     .then(res => res.json())
     .then(data => {
       if (data.valid) {
+        currentPromoData = data; // ✅ เก็บข้อมูลโปรโมชั่น
         resultEl.innerHTML = `<i class="fas fa-check-circle"></i> ใช้ได้: ส่วนลด <strong>${data.discount_text}</strong>`;
         resultEl.className = 'show success';
-        if (data.promotion_id) document.getElementById('promotion_id').value = data.promotion_id;
+        if (data.promotion_id) {
+          document.getElementById('promotion_id').value = data.promotion_id;
+        }
+        computeEnd(); // ✅ คำนวณราคาใหม่ทันที
       } else {
+        currentPromoData = null;
         resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${data.message}`;
         resultEl.className = 'show error';
         document.getElementById('promotion_id').value = '';
+        computeEnd(); // คำนวณใหม่
       }
     })
     .catch(() => {
+      currentPromoData = null;
       resultEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
       resultEl.className = 'show error';
+      computeEnd();
     });
 }
 
@@ -641,7 +666,17 @@ function nowHHMM(){
   const open24 = document.getElementById('open_24').value;
   const close24= document.getElementById('close_24').value;
   const totalPriceEl = document.getElementById('total_price');
-  const pricePerHour = <?php echo (float)$venue['PricePerHour']; ?>;
+  
+  // 💰 Elements สำหรับแสดงราคา
+  const basePriceEl = document.getElementById('base_price_display');
+  const discountRowEl = document.getElementById('discount_row');
+  const discountEl = document.getElementById('discount_display');
+  const netPriceEl = document.getElementById('net_price_display');
+
+  // ตั้งค่าวันที่เริ่มต้นเป็นวันนี้
+  const today = new Date();
+  dateEl.value = `${today.getFullYear()}-${pad2(today.getMonth()+1)}-${pad2(today.getDate())}`;
+  dateEl.min = dateEl.value;
 
   function buildStaticLists(){
     hh12El.innerHTML = '<option value="">--</option>';
@@ -708,62 +743,35 @@ function nowHHMM(){
     computeEnd();
   }
 
+  // ✅ ฟังก์ชันคำนวณราคา + ส่วนลด
   function computeEnd(){
     endHelp.textContent=''; endHelp.classList.remove('error'); submitBtn.disabled=false;
     const st = startHidden.value;
     const hrs = parseFloat(hoursEl.value||'0');
-    if (!st || !hrs || hrs<=0){ endDisp.value=''; endHidden.value=''; totalPriceEl.value=''; return; }
+    
+    if (!st || !hrs || hrs<=0){ 
+      endDisp.value=''; 
+      endHidden.value=''; 
+      totalPriceEl.value='';
+      basePriceEl.textContent = '฿0.00';
+      discountRowEl.style.display = 'none';
+      netPriceEl.textContent = '฿0.00';
+      return; 
+    }
+    
     const end24 = addMinutes(st, Math.round(hrs*60));
     endHidden.value = end24;
     endDisp.value = to12(end24);
-    totalPriceEl.value = (hrs * pricePerHour).toFixed(2);
-
-    if (cmpTime(end24, close24) > 0){
-      endHelp.innerHTML='<i class="fas fa-exclamation-circle"></i> เวลาเสร็จสิ้นเกินเวลาปิดสนาม โปรดปรับเวลาเริ่มหรือจำนวนชั่วโมง';
-      endHelp.classList.add('error');
-      submitBtn.disabled = true;
-    }
-  }
-
-  buildStaticLists();
-  applyMinForToday();
-
-  (function setDefaultEarliest(){
-    const d = new Date();
-    const todayLocal = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-    let earliest = open24;
-    if (dateEl.value === todayLocal){
-      let n = roundUpTo30(nowHHMM());
-      if (cmpTime(n, earliest) > 0) earliest = n;
-    }
-    const twelve = to12(earliest);
-    const [t,ap] = twelve.split(' '); const [H,M]=t.split(':');
-    hh12El.value = H;
-    mmEl.value = M;
-    apEl.value = ap;
-    startHidden.value = earliest;
-    computeEnd();
-  })();
-
-  hh12El.addEventListener('change', autoClampToAllowed);
-  mmEl.addEventListener('change', autoClampToAllowed);
-  apEl.addEventListener('change', autoClampToAllowed);
-  hoursEl.addEventListener('input', computeEnd);
-  dateEl.addEventListener('change', ()=>{ applyMinForToday(); autoClampToAllowed(); });
-
-  document.getElementById('bookingForm').addEventListener('submit', function(e) {
-    if (submitBtn.disabled) {
-      e.preventDefault();
-      return;
-    }
-    if (!startHidden.value) {
-      e.preventDefault();
-      startHelp.innerHTML = '<i class="fas fa-exclamation-circle"></i> กรุณาเลือกเวลาเริ่มให้ครบ';
-      startHelp.classList.add('error');
-    }
-  });
-})();
-</script>
-
-</body>
-</html>
+    
+    // 💰 คำนวณราคาต้นทุน
+    let basePrice = hrs * pricePerHour;
+    let finalPrice = basePrice;
+    let discountAmount = 0;
+    
+    // 🎁 คำนวณส่วนลดถ้ามีโปรโมชั่น
+    if (currentPromoData) {
+      if (currentPromoData.discount_type === 'percent') {
+        discountAmount = basePrice * (currentPromoData.discount_value / 100);
+        finalPrice = basePrice - discountAmount;
+      } else if (currentPromoData.discount_type === 'fixed') {
+        discountAmount
