@@ -62,7 +62,26 @@ if ($res = $conn->query($sql)) {
   $venues = $res->fetch_all(MYSQLI_ASSOC);
 }
 
-echo "<!-- Debug: Total venues = " . count($venues) . " -->\n";
+@$conn->query("SET time_zone = '+07:00'");
+
+$readyCount = 0;
+$readySql = "
+  SELECT COUNT(*) AS c
+  FROM Tbl_Venue v
+  WHERE v.Status = 'available'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM Tbl_Booking b
+      WHERE b.VenueID = v.VenueID
+        AND b.BookingStatusID NOT IN (3,4)
+        AND DATE(b.StartTime) = CURDATE()
+        AND b.EndTime > NOW()
+    )
+";
+if ($rr = $conn->query($readySql)) {
+    $readyCount = (int) (($rr->fetch_assoc())['c'] ?? 0);
+}
+
 
 // นับจำนวนสนามที่พร้อมให้บริการ
 $availableCount = count(array_filter($venues, function($v) {
