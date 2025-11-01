@@ -3,7 +3,7 @@ session_start();
 include 'db_connect.php';
 
 // ดึงข้อมูลโปรโมชั่นทั้งหมด
-$sql = "SELECT * FROM tbl_promotion ORDER BY StartDate DESC";
+$sql = "SELECT * FROM Tbl_promotion ORDER BY StartDate DESC";
 $result = $conn->query($sql);
 ?>
 

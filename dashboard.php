@@ -37,14 +37,14 @@ SELECT
       WHEN v.Status = 'closed' THEN 'closed'
       WHEN v.Status = 'maintenance' THEN 'maintenance'
       WHEN EXISTS (
-        SELECT 1 FROM tbl_booking b
+        SELECT 1 FROM Tbl_booking b
         WHERE b.VenueID = v.VenueID
           AND DATE(b.StartTime) = CURDATE()
           AND NOW() BETWEEN b.StartTime AND b.EndTime
           AND b.BookingStatusID NOT IN (3,4)
       ) THEN 'unavailable'
       WHEN EXISTS (
-        SELECT 1 FROM tbl_booking b
+        SELECT 1 FROM Tbl_booking b
         WHERE b.VenueID = v.VenueID
           AND DATE(b.StartTime) = CURDATE()
           AND b.StartTime > NOW()
@@ -52,9 +52,9 @@ SELECT
       ) THEN 'upcoming'
       ELSE 'available'
     END AS StatusNow
-FROM tbl_venue v
-JOIN tbl_venue_type vt ON v.VenueTypeID = vt.VenueTypeID
-LEFT JOIN tbl_review r ON v.VenueID = r.VenueID
+FROM Tbl_venue v
+JOIN Tbl_venue_type vt ON v.VenueTypeID = vt.VenueTypeID
+LEFT JOIN Tbl_review r ON v.VenueID = r.VenueID
 GROUP BY v.VenueID
 ORDER BY v.VenueName;
 ";

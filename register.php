@@ -1,43 +1,94 @@
 <?php
-include 'db_connect.php';
+// สมมติว่าไฟล์ db_connect.php มีการเชื่อมต่อ $conn แล้ว
+include 'db_connect.php'; 
 $message = "";
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $firstname = $_POST['firstname'];
-    $lastname  = $_POST['lastname'];
-    $email     = $_POST['email'];
-    $phone     = $_POST['phone'];
-    $username  = $_POST['username'];
-    $password_plain = $_POST['password'];
+// ----------------------------------------------------------------------
+// 2. ฟังก์ชันตรวจสอบความซ้ำซ้อนในฐานข้อมูล (ถูกย้ายออกมานอก POST block)
+// ----------------------------------------------------------------------
+function checkDuplicate($conn, $field, $value, $fieldNameDisplay) {
+    // FIX: ระบุชื่อฐานข้อมูล 'cy_arena_db' เพื่อแก้ปัญหา Table doesn't exist
+    $sql_check = "SELECT CustomerID FROM defaultdb.Tbl_Customer WHERE $field = ?";
+    //defaultdb
+    // บรรทัดนี้ (prepare) เคยเป็นบรรทัดที่ 18 ที่เกิด Error
+    $stmt_check = $conn->prepare($sql_check); 
     
-    // ตรวจสอบเบอร์โทรศัพท์
+    if (!$stmt_check) {
+        // จัดการข้อผิดพลาด prepare (เผื่อไว้)
+        return "❌ ข้อผิดพลาดในการเตรียมคำสั่ง SQL: " . $conn->error;
+    }
+    
+    $stmt_check->bind_param("s", $value);
+    $stmt_check->execute();
+    $stmt_check->store_result();
+    
+    if ($stmt_check->num_rows > 0) {
+        $stmt_check->close();
+        return "⚠️ $fieldNameDisplay ถูกใช้ไปแล้ว กรุณาใช้ $fieldNameDisplay อื่น";
+    }
+    $stmt_check->close();
+    return null; // ไม่ซ้ำ
+}
+// ----------------------------------------------------------------------
+
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // 1. รับข้อมูลและตัดช่องว่าง
+    $firstname = trim($_POST['firstname']);
+    $lastname  = trim($_POST['lastname']);
+    $email     = trim($_POST['email']);
+    $phone     = trim($_POST['phone']);
+    $username  = trim($_POST['username']);
+    $password_plain = $_POST['password'];
+
+    // 3. การตรวจสอบเบอร์โทรศัพท์ (ตามโค้ดเดิม)
     if (!preg_match('/^[0-9]{10}$/', $phone)) {
         $message = "❌ เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักเท่านั้น";
-    } else {
-        $password_hashed = password_hash($password_plain, PASSWORD_DEFAULT);
+    } 
+    
+    // 4. การตรวจสอบความซ้ำซ้อน (Username, Email)
+    else {
+        // ตรวจสอบ Username ซ้ำซ้อน
+        $message_duplicate = checkDuplicate($conn, 'Username', $username, 'Username');
+        if ($message_duplicate === null) {
+            // ถ้า Username ไม่ซ้ำ ให้ตรวจสอบ Email ซ้ำต่อ
+            $message_duplicate = checkDuplicate($conn, 'Email', $email, 'Email');
+        }
+        
+        if ($message_duplicate !== null) {
+            $message = $message_duplicate;
+        } 
+        
+        // 5. หากทุกอย่างถูกต้อง ให้ INSERT ข้อมูล
+        else {
+            $password_hashed = password_hash($password_plain, PASSWORD_DEFAULT);
 
-        $sql = "INSERT INTO tbl_customer (FirstName, LastName, Email, Phone, Username, Password) 
-                VALUES (?, ?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssssss", $firstname, $lastname, $email, $phone, $username, $password_hashed);
+            // FIX: ระบุชื่อฐานข้อมูล 'cy_arena_db' ที่คำสั่ง INSERT หลักด้วย
+            $sql = "INSERT INTO defaultdb.Tbl_Customer (FirstName, LastName, Email, Phone, Username, Password) 
+                    VALUES (?, ?, ?, ?, ?, ?)";
+            
+            // ควรทำ try/catch ไว้ที่ prepare และ execute เสมอ
+            try {
+                $stmt = $conn->prepare($sql);
+                // "ssssss" คือการระบุว่าพารามิเตอร์ทั้ง 6 ตัวเป็นสตริงทั้งหมด
+                $stmt->bind_param("ssssss", $firstname, $lastname, $email, $phone, $username, $password_hashed);
 
-        try {
-            if ($stmt->execute()) {
-                $message = "✅ สมัครสมาชิกสำเร็จ! โปรดเข้าสู่ระบบ";
-            }
-        } catch (mysqli_sql_exception $e) {
-            if (str_contains($e->getMessage(), 'Duplicate entry')) {
-                $message = "⚠️ อีเมล, เบอร์โทร หรือ Username นี้ถูกใช้ไปแล้ว";
-            } else {
-                $message = "❌ เกิดข้อผิดพลาด: " . $e->getMessage();
+                if ($stmt->execute()) {
+                    $message = "✅ สมัครสมาชิกสำเร็จ! โปรดเข้าสู่ระบบ";
+                }
+                $stmt->close();
+            } catch (mysqli_sql_exception $e) {
+                // หากเกิดข้อผิดพลาดอื่น ๆ ที่ไม่ใช่ Duplicate entry (เพราะเราตรวจสอบล่วงหน้าแล้ว)
+                $message = "❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล: " . $e->getMessage();
             }
         }
-
-        $stmt->close();
     }
+    
+    // 6. ปิดการเชื่อมต่อเมื่อสิ้นสุดการทำงาน POST
     $conn->close();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="th">
 <head>

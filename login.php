@@ -1,10 +1,11 @@
 <?php
-session_start();
+session_start(); // ✅ ต้องเอาคอมเมนต์ (//) ออก เพื่อเริ่ม Session
+
 // ตรวจสอบและรวมไฟล์เชื่อมต่อ
 if (!file_exists('db_connect.php')) {
     die("Fatal Error: ไม่พบไฟล์ db_connect.php กรุณาตรวจสอบการตั้งชื่อไฟล์.");
 }
-include 'db_connect.php'; // ไฟล์นี้ต้องกำหนดตัวแปร $conn
+include 'db_connect.php'; 
 
 $message = "";
 
@@ -12,18 +13,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
     $password_plain = trim($_POST['password']);
     
-    // ตรวจสอบว่ามีการเชื่อมต่อ $conn สำเร็จหรือไม่
     if (!isset($conn) || $conn->connect_error) {
         $message = "❌ ไม่สามารถเชื่อมต่อฐานข้อมูลได้: " . ($conn->connect_error ?? "ตัวแปร \$conn ไม่ถูกกำหนดใน db_connect.php");
     } else {
         $found = false;
 
         // --- 1. ตรวจสอบลูกค้า ---
-        $sql_customer = "SELECT CustomerID AS ID, FirstName, Password, AvatarPath FROM tbl_customer WHERE Username = ?";
+        // FIX: ระบุ cy_arena_db.Tbl_Customer เพื่อแก้ปัญหา Table doesn't exist
+        $sql_customer = "SELECT CustomerID AS ID, FirstName, Password, AvatarPath FROM defaultdb.Tbl_Customer WHERE Username = ?";
         
         $stmt = $conn->prepare($sql_customer);
         if ($stmt === FALSE) {
-            // หาก Query ผิดพลาด (ชื่อตาราง/คอลัมน์ผิด)
             $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (ลูกค้า): " . htmlspecialchars($conn->error);
         } else {
             $stmt->bind_param("s", $username);
@@ -32,9 +32,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             if ($result->num_rows == 1) {
                 $row = $result->fetch_assoc();
-                if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
+
+                // ✅ ใช้ password_verify สำหรับลูกค้า (Bcrypt)
+                if (password_verify($password_plain, $row['Password'])) {
                     $_SESSION['user_id'] = $row['ID'];
-                    $_SESSION['user_name'] = $row['FirstName'];
+                    $_SESSION['user_name'] = $row['FirstName']; 
                     $_SESSION['avatar_path'] = $row['AvatarPath'] ?? '';
                     $_SESSION['role'] = 'customer';
                     $stmt->close();
@@ -50,15 +52,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
 
-        // --- 2. ตรวจสอบพนักงาน (ทำงานเมื่อไม่พบ/รหัสผ่านผิดของลูกค้า และยังไม่มีข้อผิดพลาด Query) ---
+        // --- 2. ตรวจสอบพนักงาน (Admin) ---
         if (!$found && empty($message)) {
-            // แก้ไข: ลบคอลัมน์ AvatarPath ออกจาก Query ของพนักงาน
-            $sql_employee = "SELECT EmployeeID AS ID, FirstName, Password FROM tbl_employee WHERE Username = ?";
+            // FIX: ระบุ cy_arena_db.Tbl_Employee เพื่อแก้ปัญหา Table doesn't exist
+            $sql_employee = "SELECT EmployeeID AS ID, FirstName, Password FROM defaultdb.Tbl_Employee WHERE Username = ?";
             
             $stmt = $conn->prepare($sql_employee);
 
             if ($stmt === FALSE) {
-                // หาก Query ผิดพลาด (ชื่อตาราง/คอลัมน์ผิด)
                 $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (พนักงาน): " . htmlspecialchars($conn->error);
             } else {
                 $stmt->bind_param("s", $username);
@@ -67,11 +68,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 if ($result->num_rows == 1) {
                     $row = $result->fetch_assoc();
-                    if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
+                    
+                    // ส่วนนี้ถูกต้องแล้ว เพราะพนักงานใช้ md5
+                    if (md5($password_plain) === $row['Password']) { 
                         $_SESSION['user_id'] = $row['ID'];
                         $_SESSION['user_name'] = $row['FirstName'];
-                        // เนื่องจากลบ AvatarPath ออกจาก SELECT จึงต้องมั่นใจว่ามีการกำหนดค่าเริ่มต้น
-                        $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; // จะได้ค่าว่าง (nullish coalescing)
+                        $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; 
                         $_SESSION['role'] = 'employee';
                         $stmt->close();
                         $conn->close();
@@ -81,18 +83,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         $message = "❌ รหัสผ่านไม่ถูกต้อง";
                     }
                 } else {
-                    // หากไม่พบทั้งลูกค้าและพนักงาน
                     $message = "⚠️ ไม่พบ Username นี้ในระบบ";
                 }
                 $stmt->close();
             }
         }
         
-        if (isset($conn)) {
+        // ปิดการเชื่อมต่อหากยังเปิดอยู่ (กรณีที่ยังไม่ exit)
+        if (isset($conn) && $conn->ping()) {
             $conn->close();
         }
     }
 }
+// (ส่วน HTML ของหน้า Login จะอยู่ด้านล่าง... และควรแสดง $message)
 ?>
 <!DOCTYPE html>
 <html lang="th">
