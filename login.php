@@ -31,68 +31,67 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $result = $stmt->get_result();
 
             if ($result->num_rows == 1) {
-                $row = $result->fetch_assoc();
+            $row = $result->fetch_assoc();
 
-                // ✅ ใช้ password_verify สำหรับลูกค้า (Bcrypt)
-                if (password_verify($password_plain, $row['Password'])) {
+            // ✅ ใช้ password_verify สำหรับลูกค้า (Bcrypt)
+            if (password_verify($password_plain, $row['Password'])) {
+                $_SESSION['user_id'] = $row['ID'];
+                $_SESSION['user_name'] = $row['FirstName']; 
+                $_SESSION['avatar_path'] = $row['AvatarPath'] ?? '';
+                $_SESSION['role'] = 'customer';
+                $stmt->close();
+                $conn->close();
+                header("Location: dashboard.php");
+                exit;
+            } else {
+                $message = "❌ รหัสผ่านไม่ถูกต้อง";
+                $found = true;
+            }
+        }
+        $stmt->close();
+    }
+
+
+    // --- 2. ตรวจสอบพนักงาน (Admin) ---
+    if (!$found && empty($message)) {
+        // FIX: ระบุ defaultdb.Tbl_Employee เพื่อแก้ปัญหา Table doesn't exist
+        $sql_employee = "SELECT EmployeeID AS ID, FirstName, Password FROM defaultdb.Tbl_Employee WHERE Username = ?";
+        
+        $stmt = $conn->prepare($sql_employee);
+
+        if ($stmt === FALSE) {
+            $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (พนักงาน): " . htmlspecialchars($conn->error);
+        } else {
+            $stmt->bind_param("s", $username);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            if ($result->num_rows == 1) {
+                $row = $result->fetch_assoc();
+                
+                // 💡 FIX: เปลี่ยนจาก md5() เป็น password_verify() (Strong Hashing)
+                if (password_verify($password_plain, $row['Password'])) { // <--- แก้ตรงนี้!
                     $_SESSION['user_id'] = $row['ID'];
-                    $_SESSION['user_name'] = $row['FirstName']; 
-                    $_SESSION['avatar_path'] = $row['AvatarPath'] ?? '';
-                    $_SESSION['role'] = 'customer';
+                    $_SESSION['user_name'] = $row['FirstName'];
+                    $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; 
+                    $_SESSION['role'] = 'employee';
                     $stmt->close();
                     $conn->close();
                     header("Location: dashboard.php");
                     exit;
                 } else {
                     $message = "❌ รหัสผ่านไม่ถูกต้อง";
-                    $found = true;
                 }
+            } else {
+                $message = "⚠️ ไม่พบ Username นี้ในระบบ";
             }
             $stmt->close();
         }
-
-
-        // --- 2. ตรวจสอบพนักงาน (Admin) ---
-        if (!$found && empty($message)) {
-            // FIX: ระบุ cy_arena_db.Tbl_Employee เพื่อแก้ปัญหา Table doesn't exist
-            $sql_employee = "SELECT EmployeeID AS ID, FirstName, Password FROM defaultdb.Tbl_Employee WHERE Username = ?";
-            
-            $stmt = $conn->prepare($sql_employee);
-
-            if ($stmt === FALSE) {
-                $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (พนักงาน): " . htmlspecialchars($conn->error);
-            } else {
-                $stmt->bind_param("s", $username);
-                $stmt->execute();
-                $result = $stmt->get_result();
-
-                if ($result->num_rows == 1) {
-                    $row = $result->fetch_assoc();
-                    
-                    // ส่วนนี้ถูกต้องแล้ว เพราะพนักงานใช้ md5
-                    if (md5($password_plain) === $row['Password']) { 
-                        $_SESSION['user_id'] = $row['ID'];
-                        $_SESSION['user_name'] = $row['FirstName'];
-                        $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; 
-                        $_SESSION['role'] = 'employee';
-                        $stmt->close();
-                        $conn->close();
-                        header("Location: dashboard.php");
-                        exit;
-                    } else {
-                        $message = "❌ รหัสผ่านไม่ถูกต้อง";
-                    }
-                } else {
-                    $message = "⚠️ ไม่พบ Username นี้ในระบบ";
-                }
-                $stmt->close();
-            }
-        }
-        
-        // ปิดการเชื่อมต่อหากยังเปิดอยู่ (กรณีที่ยังไม่ exit)
-        if (isset($conn) && $conn->ping()) {
-            $conn->close();
-        }
+    }
+    
+    // ปิดการเชื่อมต่อหากยังเปิดอยู่ (กรณีที่ยังไม่ exit)
+    if (isset($conn) && $conn->ping()) {
+        $conn->close();
     }
 }
 // (ส่วน HTML ของหน้า Login จะอยู่ด้านล่าง... และควรแสดง $message)
