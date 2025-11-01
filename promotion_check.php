@@ -8,7 +8,7 @@ $response = ['valid' => false, 'message' => 'ไม่พบรหัสโป�
 if ($code) {
     $sql = "SELECT * FROM Tbl_Promotion 
             WHERE PromoCode = ? 
-              AND NOW() BETWEEN StartDate AND EndDate";
+              AND CURRENT_TIMESTAMP BETWEEN StartDate AND EndDate";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("s", $code);
     $stmt->execute();
@@ -21,6 +21,7 @@ if ($code) {
 
         $response = [
             'valid' => true,
+            'promotion_id' => $promo['PromotionID'],
             'discount_type' => $promo['DiscountType'],
             'discount_value' => $promo['DiscountValue'],
             'discount_text' => $text
