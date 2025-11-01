@@ -48,7 +48,7 @@ function db_connect() {
         }
 
         mysqli_ssl_set($conn, null, null, $tmp_ca, null, null);
-        @$conn->query("SET time_zone = '+07:00'");
+        
 
         if (!@mysqli_real_connect(
             $conn,
