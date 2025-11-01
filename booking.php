@@ -774,4 +774,74 @@ function nowHHMM(){
         discountAmount = basePrice * (currentPromoData.discount_value / 100);
         finalPrice = basePrice - discountAmount;
       } else if (currentPromoData.discount_type === 'fixed') {
-        discountAmount
+        discountAmount = currentPromoData.discount_value;
+        finalPrice = basePrice - discountAmount;
+      }
+      finalPrice = Math.max(0, finalPrice); // ไม่ให้ติดลบ
+    }
+    
+    // ✅ อัปเดตการแสดงผล
+    totalPriceEl.value = finalPrice.toFixed(2);
+    basePriceEl.textContent = '฿' + basePrice.toFixed(2);
+    netPriceEl.textContent = '฿' + finalPrice.toFixed(2);
+    
+    if (discountAmount > 0) {
+      discountRowEl.style.display = 'flex';
+      discountEl.textContent = '-฿' + discountAmount.toFixed(2);
+    } else {
+      discountRowEl.style.display = 'none';
+    }
+
+    // ตรวจสอบเวลาเกินปิดสนาม
+    if (cmpTime(end24, close24) > 0){
+      endHelp.innerHTML='<i class="fas fa-exclamation-circle"></i> เวลาเสร็จสิ้นเกินเวลาปิดสนาม โปรดปรับเวลาเริ่มหรือจำนวนชั่วโมง';
+      endHelp.classList.add('error');
+      submitBtn.disabled = true;
+    }
+  }
+
+  buildStaticLists();
+  applyMinForToday();
+
+  // ตั้งค่าเริ่มต้น
+  (function setDefaultEarliest(){
+    const d = new Date();
+    const todayLocal = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+    let earliest = open24;
+    if (dateEl.value === todayLocal){
+      let n = roundUpTo30(nowHHMM());
+      if (cmpTime(n, earliest) > 0) earliest = n;
+    }
+    const twelve = to12(earliest);
+    const [t,ap] = twelve.split(' '); const [H,M]=t.split(':');
+    hh12El.value = H;
+    mmEl.value = M;
+    apEl.value = ap;
+    startHidden.value = earliest;
+    computeEnd();
+  })();
+
+  // Event Listeners
+  hh12El.addEventListener('change', autoClampToAllowed);
+  mmEl.addEventListener('change', autoClampToAllowed);
+  apEl.addEventListener('change', autoClampToAllowed);
+  hoursEl.addEventListener('input', computeEnd);
+  dateEl.addEventListener('change', ()=>{ applyMinForToday(); autoClampToAllowed(); });
+
+  // Validate before submit
+  document.getElementById('bookingForm').addEventListener('submit', function(e) {
+    if (submitBtn.disabled) {
+      e.preventDefault();
+      return;
+    }
+    if (!startHidden.value) {
+      e.preventDefault();
+      startHelp.innerHTML = '<i class="fas fa-exclamation-circle"></i> กรุณาเลือกเวลาเริ่มให้ครบ';
+      startHelp.classList.add('error');
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
