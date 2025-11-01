@@ -1,9 +1,41 @@
+<?php
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
+$customerName = $_SESSION['user_name'];
+
+include 'db_connect.php';
+
+if (!isset($_GET['venue_id']) || !is_numeric($_GET['venue_id'])) {
+    die("Error: ไม่พบรหัสสนามกีฬา");
+}
+$venue_id = (int)$_GET['venue_id'];
+
+$sql = "SELECT v.*, vt.TypeName
+        FROM Tbl_Venue AS v
+        JOIN Tbl_Venue_Type AS vt ON v.VenueTypeID = vt.VenueTypeID
+        WHERE v.VenueID = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $venue_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows == 1) {
+    $venue = $result->fetch_assoc();
+} else {
+    die("Error: ไม่พบสนามกีฬานี้ หรือสนามไม่พร้อมให้บริการ");
+}
+$stmt->close();
+$conn->close();
+?>
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>จองสนาม - CY Arena</title>
+<title>จองสนาม - <?php echo htmlspecialchars($venue['VenueName']); ?></title>
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <style>
@@ -312,7 +344,6 @@ select:focus {
   border: 2px solid #ef4444;
 }
 
-/* 💰 Price Summary Box */
 .price-summary {
   background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
   border: 2px solid #0ea5e9;
@@ -441,7 +472,7 @@ select:focus {
 <header class="header">
   <div class="logo"><i class="fas fa-futbol"></i> CY Arena</div>
   <div class="user-info">
-    <span class="user-name">สวัสดี, ผู้ใช้</span>
+    <span class="user-name">สวัสดี, <?php echo htmlspecialchars($customerName); ?></span>
     <a href="logout.php" class="logout-btn">
       <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
     </a>
@@ -451,26 +482,28 @@ select:focus {
 <div class="container">
   <div class="venue-card">
     <div class="venue-header">
-      <h1 class="venue-title">สนามฟุตบอล A</h1>
+      <h1 class="venue-title"><?php echo htmlspecialchars($venue['VenueName']); ?></h1>
       <span class="venue-type">
-        <i class="fas fa-tag"></i> สนามฟุตบอล
+        <i class="fas fa-tag"></i> <?php echo htmlspecialchars($venue['TypeName']); ?>
       </span>
     </div>
 
     <div class="venue-details">
+      <?php if (!empty($venue['Description'])): ?>
       <div class="detail-row">
         <div class="detail-icon"><i class="fas fa-info-circle"></i></div>
         <div class="detail-content">
           <div class="detail-label">รายละเอียดสนาม</div>
-          <div class="detail-value">สนามหญ้าเทียม ขนาดมาตรฐาน 7 คน</div>
+          <div class="detail-value"><?php echo nl2br(htmlspecialchars($venue['Description'])); ?></div>
         </div>
       </div>
+      <?php endif; ?>
 
       <div class="detail-row">
         <div class="detail-icon"><i class="fas fa-money-bill-wave"></i></div>
         <div class="detail-content">
           <div class="detail-label">ราคา / ชั่วโมง</div>
-          <div class="detail-value price-highlight">฿100.00</div>
+          <div class="detail-value price-highlight">฿<?php echo number_format($venue['PricePerHour'], 2); ?></div>
         </div>
       </div>
 
@@ -478,7 +511,10 @@ select:focus {
         <div class="detail-icon"><i class="fas fa-clock"></i></div>
         <div class="detail-content">
           <div class="detail-label">เวลาทำการ</div>
-          <div class="detail-value">09:00 - 21:00 น.</div>
+          <div class="detail-value">
+            <?php echo date("H:i", strtotime($venue['TimeOpen'])); ?> - 
+            <?php echo date("H:i", strtotime($venue['TimeClose'])); ?> น.
+          </div>
         </div>
       </div>
     </div>
@@ -490,17 +526,18 @@ select:focus {
     </h2>
 
     <form action="confirm_booking.php" method="POST" id="bookingForm">
-      <input type="hidden" name="venue_id" id="venue_id" value="1">
+      <input type="hidden" name="venue_id" id="venue_id" value="<?php echo (int)$venue_id; ?>">
       <input type="hidden" name="promotion_id" id="promotion_id" value="">
       <input type="hidden" name="total_price" id="total_price" value="">
       <input type="hidden" name="start_time" id="start_time">
       <input type="hidden" name="end_time" id="end_time">
-      <input type="hidden" id="open_24" value="09:00">
-      <input type="hidden" id="close_24" value="21:00">
+      <input type="hidden" id="open_24" value="<?= date('H:i', strtotime($venue['TimeOpen'])) ?>">
+      <input type="hidden" id="close_24" value="<?= date('H:i', strtotime($venue['TimeClose'])) ?>">
 
       <div class="form-group">
         <label><i class="far fa-calendar"></i> เลือกวันที่</label>
-        <input type="date" name="booking_date" id="booking_date" required>
+        <input type="date" name="booking_date" id="booking_date" required 
+               min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>">
       </div>
 
       <div class="form-group">
@@ -523,11 +560,11 @@ select:focus {
 
       <div class="form-group">
         <label><i class="fas fa-hourglass-half"></i> จำนวนชั่วโมง</label>
-        <input type="number" name="hours" id="hours" min="1" step="0.5" value="3" required>
+        <input type="number" name="hours" id="hours" min="1" step="0.5" value="1" required>
       </div>
 
       <div class="form-group">
-        <label><i class="fas fa-check-circle"></i> เวลาเสร็จสิ้น (คำนวณอัตโนมัติ)</label>
+        <label><i class="fas fa-check-circle"></i> เวลาเสร็จสิ้น (คำนวดอัตโนมัติ)</label>
         <input type="text" id="end_time_display" class="readonly-field" readonly placeholder="--:-- --">
         <div id="endHelp" class="help-text"></div>
       </div>
@@ -573,7 +610,7 @@ select:focus {
 <script>
 // 🎯 ตัวแปรสำหรับเก็บข้อมูลโปรโมชั่น
 let currentPromoData = null;
-const pricePerHour = 100; // ตัวอย่าง ราคาต่อชั่วโมง
+const pricePerHour = <?php echo (float)$venue['PricePerHour']; ?>;
 
 // ฟังก์ชันตรวจสอบโปรโมชั่น
 function checkPromotion() {
@@ -585,28 +622,27 @@ function checkPromotion() {
     resultEl.className = 'show error';
     currentPromoData = null;
     document.getElementById('promotion_id').value = '';
-    computeEnd(); // คำนวณใหม่
+    computeEnd();
     return;
   }
   
-  // เรียก API ตรวจสอบโปรโมชั่น
   fetch('promotion_check.php?code=' + encodeURIComponent(code))
     .then(res => res.json())
     .then(data => {
       if (data.valid) {
-        currentPromoData = data; // ✅ เก็บข้อมูลโปรโมชั่น
+        currentPromoData = data;
         resultEl.innerHTML = `<i class="fas fa-check-circle"></i> ใช้ได้: ส่วนลด <strong>${data.discount_text}</strong>`;
         resultEl.className = 'show success';
         if (data.promotion_id) {
           document.getElementById('promotion_id').value = data.promotion_id;
         }
-        computeEnd(); // ✅ คำนวณราคาใหม่ทันที
+        computeEnd();
       } else {
         currentPromoData = null;
         resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${data.message}`;
         resultEl.className = 'show error';
         document.getElementById('promotion_id').value = '';
-        computeEnd(); // คำนวณใหม่
+        computeEnd();
       }
     })
     .catch(() => {
@@ -667,16 +703,10 @@ function nowHHMM(){
   const close24= document.getElementById('close_24').value;
   const totalPriceEl = document.getElementById('total_price');
   
-  // 💰 Elements สำหรับแสดงราคา
   const basePriceEl = document.getElementById('base_price_display');
   const discountRowEl = document.getElementById('discount_row');
   const discountEl = document.getElementById('discount_display');
   const netPriceEl = document.getElementById('net_price_display');
-
-  // ตั้งค่าวันที่เริ่มต้นเป็นวันนี้
-  const today = new Date();
-  dateEl.value = `${today.getFullYear()}-${pad2(today.getMonth()+1)}-${pad2(today.getDate())}`;
-  dateEl.min = dateEl.value;
 
   function buildStaticLists(){
     hh12El.innerHTML = '<option value="">--</option>';
@@ -743,7 +773,6 @@ function nowHHMM(){
     computeEnd();
   }
 
-  // ✅ ฟังก์ชันคำนวณราคา + ส่วนลด
   function computeEnd(){
     endHelp.textContent=''; endHelp.classList.remove('error'); submitBtn.disabled=false;
     const st = startHidden.value;
