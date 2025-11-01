@@ -74,83 +74,76 @@ if (isset($_GET['cancel_booking']) && is_numeric($_GET['cancel_booking'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
     $booking_id = intval($_POST['booking_id']);
     $slip_path = null;
+    $has_error = false;
     
-    // Handle file upload
+    // 1. ตรวจสอบว่ามีการอัปโหลดไฟล์และดำเนินการอัปโหลด
     if (isset($_FILES['payment_slip']) && $_FILES['payment_slip']['error'] === UPLOAD_ERR_OK) {
-        $upload_dir = 'uploads/payment_slips/';
         
-        // Create directory if not exists
-        if (!is_dir($upload_dir)) {
-            mkdir($upload_dir, 0755, true);
+        // ===== กำหนด Path สำหรับอัปโหลด =====
+        $uploadWeb = 'uploads/payment_slips';            // ใช้เก็บลง DB/แสดงผล
+        $uploadAbs = __DIR__ . '/' . $uploadWeb;        // path จริงบนเครื่อง
+
+        // สร้างโฟลเดอร์ถ้ายังไม่มี + ตั้งสิทธิ์ (Best Effort)
+        if (!is_dir($uploadAbs)) {
+            mkdir($uploadAbs, 0775, true);
         }
-        // ===== upload dir (เว็บ/ไฟล์จริง) =====
-$uploadWeb = 'uploads/payment_slips';          // ใช้เก็บลง DB/แสดงผล
-$uploadAbs = __DIR__ . '/' . $uploadWeb;       // path จริงบนเครื่อง
+        if (!is_writable($uploadAbs)) {
+            @chmod($uploadAbs, 0775); 
+        }
 
-// สร้างโฟลเดอร์ถ้ายังไม่มี + ตั้งสิทธิ์ให้เขียนได้
-if (!is_dir($uploadAbs)) {
-    mkdir($uploadAbs, 0775, true);
-}
-if (!is_writable($uploadAbs)) {
-    @chmod($uploadAbs, 0775); // best effort
-}
+        $file_extension = strtolower(pathinfo($_FILES['payment_slip']['name'], PATHINFO_EXTENSION));
+        $allowed_extensions = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
 
-       $file_extension = strtolower(pathinfo($_FILES['payment_slip']['name'], PATHINFO_EXTENSION));
-$allowed_extensions = ['jpg', 'jpeg', 'png', 'webp', 'pdf']; // จะคงเดิมก็ได้
+        if (in_array($file_extension, $allowed_extensions, true)) {
+            $new_filename = 'slip_' . (int)$booking_id . '_' . time() . '.' . $file_extension;
+            $abs_path = $uploadAbs . '/' . $new_filename;
+            $slip_path = $uploadWeb . '/' . $new_filename; // Path ที่จะเก็บลง DB
+            
+            if (!move_uploaded_file($_FILES['payment_slip']['tmp_name'], $abs_path)) {
+                // อัปโหลดไม่สำเร็จ
+                $_SESSION['error_message'] = "❌ ไม่สามารถอัปโหลดสลิปได้ (เขียนไฟล์ไม่สำเร็จ)";
+                $has_error = true;
+            }
+        } else {
+            // ไฟล์ไม่ถูกต้อง
+            $_SESSION['error_message'] = "❌ รองรับเฉพาะไฟล์ JPG, JPEG, PNG, WEBP หรือ PDF เท่านั้น";
+            $has_error = true;
+        }
+    } 
+    
+    // 2. อัปเดตสถานะการชำระเงินและ PaymentSlipPath (ถ้ามีและไม่มี Error)
+    if (!$has_error) {
+        
+        // กำหนด SQL statement: ถ้ามี $slip_path ให้เพิ่มคอลัมน์ PaymentSlipPath เข้าไปด้วย
+        $update_sql = "UPDATE Tbl_Booking SET PaymentStatusID = 2" . 
+                      ($slip_path ? ", PaymentSlipPath = ?" : "") . 
+                      " WHERE BookingID = ? AND CustomerID = ?";
+        
+        $update_stmt = $conn->prepare($update_sql);
 
-if (in_array($file_extension, $allowed_extensions, true)) {
-
-    $new_filename = 'slip_' . (int)$booking_id . '_' . time() . '.' . $file_extension;
-
-    // path จริงที่ใช้ย้ายไฟล์
-    $abs_path = $uploadAbs . '/' . $new_filename;
-
-    // path ที่เก็บลง DB/ไว้แสดงผลใน <img src> (relative จาก docroot)
-    $slip_path = $uploadWeb . '/' . $new_filename;
-
-    if (move_uploaded_file($_FILES['payment_slip']['tmp_name'], $abs_path)) {
-        // ✅ ย้ายสำเร็จ -> ใช้ $slip_path บันทึกลง DB ต่อได้เลย
-        // ตัวอย่าง:
-        // $stmt = $conn->prepare("UPDATE Tbl_Booking SET PaymentSlipPath=? WHERE BookingID=?");
-        // $stmt->bind_param('si', $slip_path, $booking_id);
-        // $stmt->execute();
-
-        $_SESSION['success_message'] = "อัปโหลดสลิปเรียบร้อย";
-        header("Location: my_bookings.php");
-        exit;
-    } else {
-        $_SESSION['error_message'] = "❌ ไม่สามารถอัปโหลดสลิปได้ (เขียนไฟล์ไม่สำเร็จ)";
-        header("Location: my_bookings.php");
-        exit;
+        // Binding parameters
+        if ($slip_path) {
+            // ผูก $slip_path (s), $booking_id (i), $customer_id (i)
+            $update_stmt->bind_param("sii", $slip_path, $booking_id, $customer_id);
+        } else {
+            // ผูก $booking_id (i), $customer_id (i) เท่านั้น
+            $update_stmt->bind_param("ii", $booking_id, $customer_id);
+        }
+        
+        if ($update_stmt->execute()) {
+            // อัปเดตสำเร็จ
+            $message_suffix = $slip_path ? " (พร้อมสลิป)" : " (รอตรวจสอบการโอน)";
+            $_SESSION['success_message'] = "✅ ยืนยันการชำระเงินสำเร็จ! Booking ID: #$booking_id" . $message_suffix;
+        } else {
+            // อัปเดตสถานะไม่สำเร็จ
+            $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดตสถานะ: " . $update_stmt->error;
+        }
+        $update_stmt->close();
     }
-
-} else {
-    $_SESSION['error_message'] = "❌ รองรับเฉพาะไฟล์ JPG, JPEG, PNG, WEBP หรือ PDF เท่านั้น";
+    
+    // 3. Redirect กลับไปหน้าเดิมเสมอ
     header("Location: my_bookings.php");
     exit;
-}
-
-    }
-    
-    // Update payment status and slip path
-    if ($slip_path) {
-        $update_sql = "UPDATE Tbl_Booking SET PaymentStatusID = 2, PaymentSlipPath = ? WHERE BookingID = ? AND CustomerID = ?";
-        $update_stmt = $conn->prepare($update_sql);
-        $update_stmt->bind_param("sii", $slip_path, $booking_id, $customer_id);
-    } else {
-        $update_sql = "UPDATE Tbl_Booking SET PaymentStatusID = 2 WHERE BookingID = ? AND CustomerID = ?";
-        $update_stmt = $conn->prepare($update_sql);
-        $update_stmt->bind_param("ii", $booking_id, $customer_id);
-    }
-    
-    if ($update_stmt->execute()) {
-        $_SESSION['success_message'] = "✅ ยืนยันการชำระเงินสำเร็จ! Booking ID: #$booking_id" . ($slip_path ? " (พร้อมสลิป)" : "");
-        header("Location: my_bookings.php");
-        exit;
-    } else {
-        $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดตสถานะ";
-    }
-    $update_stmt->close();
 }
 
 // Get messages from session
