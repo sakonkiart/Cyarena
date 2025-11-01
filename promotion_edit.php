@@ -143,9 +143,6 @@ button:hover {
     <label>วันสิ้นสุด</label>
     <input type="datetime-local" name="EndDate" value="<?php echo date('Y-m-d\TH:i', strtotime($promo['EndDate'])); ?>" required>
 
-    <label>เงื่อนไข (ถ้ามี)</label>
-    <textarea name="Conditions" rows="2"><?php echo htmlspecialchars($promo['Conditions']); ?></textarea>
-
     <button type="submit" name="update_promo">💾 บันทึกการแก้ไข</button>
     <a href="promotion_manage.php" class="back-btn">⬅ กลับ</a>
   </form>
