@@ -465,154 +465,118 @@ select:focus {
     flex-wrap: wrap;
   }
 }
-</style>
-</head>
-<body>
-
-<header class="header">
-  <div class="logo"><i class="fas fa-futbol"></i> CY Arena</div>
-  <div class="user-info">
-    <span class="user-name">สวัสดี, <?php echo htmlspecialchars($customerName); ?></span>
-    <a href="logout.php" class="logout-btn">
-      <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
-    </a>
-  </div>
-</header>
-
-<div class="container">
-  <div class="venue-card">
-    <div class="venue-header">
-      <h1 class="venue-title"><?php echo htmlspecialchars($venue['VenueName']); ?></h1>
-      <span class="venue-type">
-        <i class="fas fa-tag"></i> <?php echo htmlspecialchars($venue['TypeName']); ?>
-      </span>
-    </div>
-
-    <div class="venue-details">
-      <?php if (!empty($venue['Description'])): ?>
-      <div class="detail-row">
-        <div class="detail-icon"><i class="fas fa-info-circle"></i></div>
-        <div class="detail-content">
-          <div class="detail-label">รายละเอียดสนาม</div>
-          <div class="detail-value"><?php echo nl2br(htmlspecialchars($venue['Description'])); ?></div>
-        </div>
-      </div>
-      <?php endif; ?>
-
-      <div class="detail-row">
-        <div class="detail-icon"><i class="fas fa-money-bill-wave"></i></div>
-        <div class="detail-content">
-          <div class="detail-label">ราคา / ชั่วโมง</div>
-          <div class="detail-value price-highlight">฿<?php echo number_format($venue['PricePerHour'], 2); ?></div>
-        </div>
-      </div>
-
-      <div class="detail-row">
-        <div class="detail-icon"><i class="fas fa-clock"></i></div>
-        <div class="detail-content">
-          <div class="detail-label">เวลาทำการ</div>
-          <div class="detail-value">
-            <?php echo date("H:i", strtotime($venue['TimeOpen'])); ?> - 
-            <?php echo date("H:i", strtotime($venue['TimeClose'])); ?> น.
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="booking-card">
-    <h2 class="section-title">
-      <i class="fas fa-calendar-check"></i> กรอกรายละเอียดการจอง
-    </h2>
-
-    <form action="confirm_booking.php" method="POST" id="bookingForm">
-      <input type="hidden" name="venue_id" id="venue_id" value="<?php echo (int)$venue_id; ?>">
-      <input type="hidden" name="promotion_id" id="promotion_id" value="">
-      <input type="hidden" name="total_price" id="total_price" value="">
-      <input type="hidden" name="start_time" id="start_time">
-      <input type="hidden" name="end_time" id="end_time">
-      <input type="hidden" id="open_24" value="<?= date('H:i', strtotime($venue['TimeOpen'])) ?>">
-      <input type="hidden" id="close_24" value="<?= date('H:i', strtotime($venue['TimeClose'])) ?>">
-
-      <div class="form-group">
-        <label><i class="far fa-calendar"></i> เลือกวันที่</label>
-        <input type="date" name="booking_date" id="booking_date" required 
-               min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>">
-      </div>
-
-      <div class="form-group">
-        <label><i class="far fa-clock"></i> เวลาเริ่ม</label>
-        <div class="time-row">
-          <select id="hh12"><option value="">--</option></select>
-          <span class="time-separator">:</span>
-          <select id="mm"><option value="">--</option></select>
-          <select id="ampm">
-            <option value="AM">AM</option>
-            <option value="PM">PM</option>
-          </select>
-        </div>
-        <div class="help-text">
-          <i class="fas fa-info-circle"></i>
-          เลือกได้ทีละ 30 นาที (ถ้าเป็นวันนี้จะไม่ให้เร็วกว่าปัจจุบัน)
-        </div>
-        <div id="startHelp" class="help-text"></div>
-      </div>
-
-      <div class="form-group">
-        <label><i class="fas fa-hourglass-half"></i> จำนวนชั่วโมง</label>
-        <input type="number" name="hours" id="hours" min="1" step="0.5" value="1" required>
-      </div>
-
-      <div class="form-group">
-        <label><i class="fas fa-check-circle"></i> เวลาเสร็จสิ้น (คำนวดอัตโนมัติ)</label>
-        <input type="text" id="end_time_display" class="readonly-field" readonly placeholder="--:-- --">
-        <div id="endHelp" class="help-text"></div>
-      </div>
-
-      <div class="form-group">
-        <label><i class="fas fa-gift"></i> รหัสโปรโมชั่น (ถ้ามี)</label>
-        <div class="promo-group">
-          <input type="text" id="promoCode" name="promo_code" placeholder="กรอกรหัสโปรโมชั่น">
-          <button type="button" class="check-promo-btn" onclick="checkPromotion()">
-            <i class="fas fa-check"></i> ตรวจสอบ
-          </button>
-        </div>
-        <div id="promoResult"></div>
-      </div>
-
-      <!-- 💰 สรุปราคา -->
-      <div class="price-summary">
-        <div class="price-row">
-          <span class="label">ราคาต้นทุน:</span>
-          <span class="value" id="base_price_display">฿0.00</span>
-        </div>
-        <div class="price-row" id="discount_row" style="display: none;">
-          <span class="label">ส่วนลด:</span>
-          <span class="value discount-value" id="discount_display">-฿0.00</span>
-        </div>
-        <div class="price-row total">
-          <span class="label">💵 ยอดชำระ:</span>
-          <span class="value" id="net_price_display">฿0.00</span>
-        </div>
-      </div>
-
-      <button type="submit" class="submit-btn" id="submitBtn">
-        <i class="fas fa-calendar-check"></i> ยืนยันการจอง
-      </button>
-    </form>
-  </div>
-
-  <a href="dashboard.php" class="back-link">
-    <i class="fas fa-arrow-left"></i> กลับไปเลือกสนาม
-  </a>
-</div>
-
 <script>
 // 🎯 ตัวแปรสำหรับเก็บข้อมูลโปรโมชั่น
 let currentPromoData = null;
 const pricePerHour = <?php echo (float)$venue['PricePerHour']; ?>;
 
-// ฟังก์ชันตรวจสอบโปรโมชั่น
+// 🔗 ตัวแปรสำหรับเก็บ DOM Elements และค่าคงที่ (Global Scope)
+// ประกาศตัวแปรเหล่านี้ไว้ภายนอก IIFE เพื่อให้ฟังก์ชันที่ถูกย้ายออกมา (computeEnd) สามารถเข้าถึงได้
+let dateEl, hh12El, mmEl, apEl, startHidden, hoursEl, endDisp, endHidden, startHelp, endHelp, submitBtn;
+let open24, close24, totalPriceEl;
+let basePriceEl, discountRowEl, discountEl, netPriceEl;
+
+
+/* Time & Booking Logic (Utility Functions - คงเดิม) */
+function pad2(n){ return String(n).padStart(2,'0'); }
+function to12(hhmm){
+  let [h,m]=hhmm.split(':').map(Number);
+  const ampm = h>=12 ? 'PM':'AM';
+  h = h%12; if(h===0) h=12;
+  return `${pad2(h)}:${pad2(m)} ${ampm}`;
+}
+function to24_from_parts(h12, m, ap){
+  let h = parseInt(h12||'0',10);
+  if (isNaN(h)) return '';
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return `${pad2(h)}:${pad2(parseInt(m||'0',10))}`;
+}
+function cmpTime(a,b){ return a===b?0:(a>b?1:-1); }
+function addMinutes(hhmm, mins){
+  let [h,m]=hhmm.split(':').map(Number);
+  let t=h*60+m+mins;
+  if (t<0) t=0;
+  return `${pad2(Math.floor(t/60) % 24)}:${pad2(t%60)}`; // ปรับแก้ให้รองรับการข้ามวัน
+}
+function roundUpTo30(hhmm){
+  let [h,m]=hhmm.split(':'.map(Number);
+  const mins=h*60+m;
+  const add=(30-(mins%30))%30;
+  const next=mins+add;
+  return `${pad2(Math.floor(next/60))}:${pad2(next%60)}`;
+}
+function nowHHMM(){
+  const d=new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// ----------------------------------------------------------------
+// ⭐ computeEnd() ถูกย้ายมา Global Scope
+// ----------------------------------------------------------------
+function computeEnd(){
+  // ตรวจสอบว่ามีการโหลด DOM Elements แล้วหรือยัง
+  if (!startHidden) return; 
+
+  endHelp.textContent=''; endHelp.classList.remove('error'); submitBtn.disabled=false;
+  const st = startHidden.value;
+  const hrs = parseFloat(hoursEl.value||'0');
+  
+  if (!st || !hrs || hrs<=0){ 
+    endDisp.value=''; 
+    endHidden.value=''; 
+    totalPriceEl.value='';
+    basePriceEl.textContent = '฿0.00';
+    discountRowEl.style.display = 'none';
+    netPriceEl.textContent = '฿0.00';
+    return; 
+  }
+  
+  const end24 = addMinutes(st, Math.round(hrs*60));
+  endHidden.value = end24;
+  endDisp.value = to12(end24);
+  
+  // 💰 คำนวณราคาต้นทุน
+  let basePrice = hrs * pricePerHour;
+  let finalPrice = basePrice;
+  let discountAmount = 0;
+  
+  // 🎁 คำนวณส่วนลดถ้ามีโปรโมชั่น
+  if (currentPromoData) {
+    if (currentPromoData.discount_type === 'percent') {
+      discountAmount = basePrice * (currentPromoData.discount_value / 100);
+      finalPrice = basePrice - discountAmount;
+    } else if (currentPromoData.discount_type === 'fixed') {
+      discountAmount = currentPromoData.discount_value;
+      finalPrice = basePrice - discountAmount;
+    }
+    finalPrice = Math.max(0, finalPrice); // ไม่ให้ติดลบ
+    discountAmount = basePrice - finalPrice; // คำนวณส่วนลดที่แท้จริง
+  }
+  
+  // ✅ อัปเดตการแสดงผล
+  totalPriceEl.value = finalPrice.toFixed(2);
+  basePriceEl.textContent = '฿' + basePrice.toFixed(2);
+  netPriceEl.textContent = '฿' + finalPrice.toFixed(2);
+  
+  if (discountAmount > 0) {
+    discountRowEl.style.display = 'flex';
+    discountEl.textContent = '-฿' + discountAmount.toFixed(2);
+  } else {
+    discountRowEl.style.display = 'none';
+  }
+
+  // ตรวจสอบเวลาเกินปิดสนาม
+  if (cmpTime(end24, close24) > 0){
+    endHelp.innerHTML='<i class="fas fa-exclamation-circle"></i> เวลาเสร็จสิ้นเกินเวลาปิดสนาม โปรดปรับเวลาเริ่มหรือจำนวนชั่วโมง';
+    endHelp.classList.add('error');
+    submitBtn.disabled = true;
+  }
+}
+
+// ----------------------------------------------------------------
+// ฟังก์ชันตรวจสอบโปรโมชั่น (คงเดิม แต่ตอนนี้เรียก computeEnd ได้แล้ว)
+// ----------------------------------------------------------------
 function checkPromotion() {
   const code = document.getElementById('promoCode').value.trim();
   const resultEl = document.getElementById('promoResult');
@@ -653,60 +617,31 @@ function checkPromotion() {
     });
 }
 
-/* Time & Booking Logic */
-function pad2(n){ return String(n).padStart(2,'0'); }
-function to12(hhmm){
-  let [h,m]=hhmm.split(':').map(Number);
-  const ampm = h>=12 ? 'PM':'AM';
-  h = h%12; if(h===0) h=12;
-  return `${pad2(h)}:${pad2(m)} ${ampm}`;
-}
-function to24_from_parts(h12, m, ap){
-  let h = parseInt(h12||'0',10);
-  if (isNaN(h)) return '';
-  if (ap === 'PM' && h !== 12) h += 12;
-  if (ap === 'AM' && h === 12) h = 0;
-  return `${pad2(h)}:${pad2(parseInt(m||'0',10))}`;
-}
-function cmpTime(a,b){ return a===b?0:(a>b?1:-1); }
-function addMinutes(hhmm, mins){
-  let [h,m]=hhmm.split(':').map(Number);
-  let t=h*60+m+mins;
-  if (t<0) t=0;
-  return `${pad2(Math.floor(t/60))}:${pad2(t%60)}`;
-}
-function roundUpTo30(hhmm){
-  let [h,m]=hhmm.split(':').map(Number);
-  const mins=h*60+m;
-  const add=(30-(mins%30))%30;
-  const next=mins+add;
-  return `${pad2(Math.floor(next/60))}:${pad2(next%60)}`;
-}
-function nowHHMM(){
-  const d=new Date();
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
 
+// ----------------------------------------------------------------
+// IIFE (สำหรับ Initialization และ Event Handlers)
+// ----------------------------------------------------------------
 (function(){
-  const dateEl = document.getElementById('booking_date');
-  const hh12El = document.getElementById('hh12');
-  const mmEl = document.getElementById('mm');
-  const apEl = document.getElementById('ampm');
-  const startHidden = document.getElementById('start_time');
-  const hoursEl = document.getElementById('hours');
-  const endDisp = document.getElementById('end_time_display');
-  const endHidden = document.getElementById('end_time');
-  const startHelp = document.getElementById('startHelp');
-  const endHelp = document.getElementById('endHelp');
-  const submitBtn = document.getElementById('submitBtn');
-  const open24 = document.getElementById('open_24').value;
-  const close24= document.getElementById('close_24').value;
-  const totalPriceEl = document.getElementById('total_price');
+  // 1. กำหนดค่าให้ตัวแปร Global
+  dateEl = document.getElementById('booking_date');
+  hh12El = document.getElementById('hh12');
+  mmEl = document.getElementById('mm');
+  apEl = document.getElementById('ampm');
+  startHidden = document.getElementById('start_time');
+  hoursEl = document.getElementById('hours');
+  endDisp = document.getElementById('end_time_display');
+  endHidden = document.getElementById('end_time');
+  startHelp = document.getElementById('startHelp');
+  endHelp = document.getElementById('endHelp');
+  submitBtn = document.getElementById('submitBtn');
+  open24 = document.getElementById('open_24').value;
+  close24= document.getElementById('close_24').value;
+  totalPriceEl = document.getElementById('total_price');
   
-  const basePriceEl = document.getElementById('base_price_display');
-  const discountRowEl = document.getElementById('discount_row');
-  const discountEl = document.getElementById('discount_display');
-  const netPriceEl = document.getElementById('net_price_display');
+  basePriceEl = document.getElementById('base_price_display');
+  discountRowEl = document.getElementById('discount_row');
+  discountEl = document.getElementById('discount_display');
+  netPriceEl = document.getElementById('net_price_display');
 
   function buildStaticLists(){
     hh12El.innerHTML = '<option value="">--</option>';
@@ -743,7 +678,9 @@ function nowHHMM(){
 
   function autoClampToAllowed(){
     if (!hh12El.value || !mmEl.value || !apEl.value) {
-      startHidden.value=''; endDisp.value=''; endHidden.value=''; return;
+      startHidden.value=''; endDisp.value=''; endHidden.value=''; 
+      computeEnd(); // เรียก computeEnd ที่ Global
+      return;
     }
     let st24 = to24_from_parts(hh12El.value, mmEl.value, apEl.value);
     if (!st24){ return; }
@@ -770,65 +707,11 @@ function nowHHMM(){
     }
 
     startHidden.value = st24;
-    computeEnd();
+    computeEnd(); // เรียก computeEnd ที่ Global
   }
 
-  function computeEnd(){
-    endHelp.textContent=''; endHelp.classList.remove('error'); submitBtn.disabled=false;
-    const st = startHidden.value;
-    const hrs = parseFloat(hoursEl.value||'0');
-    
-    if (!st || !hrs || hrs<=0){ 
-      endDisp.value=''; 
-      endHidden.value=''; 
-      totalPriceEl.value='';
-      basePriceEl.textContent = '฿0.00';
-      discountRowEl.style.display = 'none';
-      netPriceEl.textContent = '฿0.00';
-      return; 
-    }
-    
-    const end24 = addMinutes(st, Math.round(hrs*60));
-    endHidden.value = end24;
-    endDisp.value = to12(end24);
-    
-    // 💰 คำนวณราคาต้นทุน
-    let basePrice = hrs * pricePerHour;
-    let finalPrice = basePrice;
-    let discountAmount = 0;
-    
-    // 🎁 คำนวณส่วนลดถ้ามีโปรโมชั่น
-    if (currentPromoData) {
-      if (currentPromoData.discount_type === 'percent') {
-        discountAmount = basePrice * (currentPromoData.discount_value / 100);
-        finalPrice = basePrice - discountAmount;
-      } else if (currentPromoData.discount_type === 'fixed') {
-        discountAmount = currentPromoData.discount_value;
-        finalPrice = basePrice - discountAmount;
-      }
-      finalPrice = Math.max(0, finalPrice); // ไม่ให้ติดลบ
-    }
-    
-    // ✅ อัปเดตการแสดงผล
-    totalPriceEl.value = finalPrice.toFixed(2);
-    basePriceEl.textContent = '฿' + basePrice.toFixed(2);
-    netPriceEl.textContent = '฿' + finalPrice.toFixed(2);
-    
-    if (discountAmount > 0) {
-      discountRowEl.style.display = 'flex';
-      discountEl.textContent = '-฿' + discountAmount.toFixed(2);
-    } else {
-      discountRowEl.style.display = 'none';
-    }
-
-    // ตรวจสอบเวลาเกินปิดสนาม
-    if (cmpTime(end24, close24) > 0){
-      endHelp.innerHTML='<i class="fas fa-exclamation-circle"></i> เวลาเสร็จสิ้นเกินเวลาปิดสนาม โปรดปรับเวลาเริ่มหรือจำนวนชั่วโมง';
-      endHelp.classList.add('error');
-      submitBtn.disabled = true;
-    }
-  }
-
+  // ⭐⭐ ลบฟังก์ชัน computeEnd() ที่เคยอยู่ตรงนี้ออกไปแล้ว ⭐⭐
+  
   buildStaticLists();
   applyMinForToday();
 
@@ -871,6 +754,5 @@ function nowHHMM(){
   });
 })();
 </script>
-
 </body>
 </html>
