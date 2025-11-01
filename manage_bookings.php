@@ -97,7 +97,7 @@ $sql = "SELECT
             b.StartTime, b.EndTime, b.HoursBooked, b.TotalPrice,
             bs.StatusName AS BookingStatus, b.BookingStatusID,
             ps.StatusName AS PaymentStatus, b.PaymentStatusID,
-            b.PaymentSlipPath
+            NULL AS PaymentSlipPath
         FROM Tbl_Booking b
         JOIN Tbl_Venue v ON b.VenueID = v.VenueID
         JOIN Tbl_Customer c ON b.CustomerID = c.CustomerID
