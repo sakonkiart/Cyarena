@@ -62,6 +62,11 @@ if ($res = $conn->query($sql)) {
   $venues = $res->fetch_all(MYSQLI_ASSOC);
 }
 
+// นับจำนวนสนามที่พร้อมให้บริการ
+$availableCount = count(array_filter($venues, function($v) {
+  return $v['StatusNow'] === 'available';
+}));
+
 // ดึงจำนวนโปรโมชั่นที่ใช้งานได้ (สำหรับ Employee)
 $activePromoCount = 0;
 if ($role === 'employee') {
@@ -1125,7 +1130,7 @@ body {
 <!-- ========== PROMO BAR ========== -->
 <div class="promo-bar">
   <div class="promo-content">
-    <span class="promo-text">⚽ โปรพิเศษ! ลด 20% ทุกวันธรรมดา 🏀 จองครบ 3 ชม. ฟรี 1 ชม. 🎾 สมาชิกใหม่ลดทันที 50 บาท 🏸 โปรศุกร์-เสาร์-อาทิตย์ ลดสูงสุด 30% 🏓 จองออนไลน์รับคะแนนสะสม ⚾ แนะนำเพื่อนรับส่วนลดเพิ่ม</span>
+    <span class="promo-text">⚽ โปรพิเศษ! ลด 20% ทุกวันธรรมดา 🏀 จองครบ 3 ชม. ฟรี 1 ชม. 🎾 สมาชิกใหม่ลดทันที 50 บาท 🏸 โปรศุกร์-เสาร์-อาทิตย์ ลดสูงสุด 30% 🎯 จองออนไลน์รับคะแนนสะสม ⚾ แนะนำเพื่อนรับส่วนลดเพิ่ม</span>
   </div>
 </div>
 
@@ -1163,7 +1168,7 @@ body {
     <div class="action-card" onclick="window.location.href='#venues'">
       <div class="action-icon" style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);">✅</div>
       <div class="action-title">พร้อมให้บริการ</div>
-      <div class="action-desc"><?php echo count(array_filter($venues, fn($v) => $v['StatusNow'] === 'available')); ?> สนาม</div>
+      <div class="action-desc"><?php echo $availableCount; ?> สนาม</div>
     </div>
     <?php if ($role === 'customer'): ?>
       <div class="action-card" onclick="window.location.href='bookings_calendar_public.php'">
@@ -1208,21 +1213,21 @@ body {
   <div class="section-header">
     <h2 class="section-title">เลือกประเภทสนาม</h2>
   </div>
-<div class="filter-tabs">
-  <button class="filter-btn active" data-type="all">🏆 ทั้งหมด</button>
-  <button class="filter-btn" data-type="ฟุตบอล">⚽ ฟุตบอล</button>
-  <button class="filter-btn" data-type="ฟุตซอล">🥅 ฟุตซอล</button>
-  <button class="filter-btn" data-type="บาสเกตบอล">🏀 บาสเกตบอล</button>
-  <button class="filter-btn" data-type="แบดมินตัน">🏸 แบดมินตัน</button>
-  <button class="filter-btn" data-type="เทนนิส">🎾 เทนนิส</button>
-  <button class="filter-btn" data-type="ปิงปอง">🏓 ปิงปอง</button>
-  <button class="filter-btn" data-type="วอลเลย์บอล">🏐 วอลเลย์บอล</button>
-  <button class="filter-btn" data-type="เบสบอล">⚾ เบสบอล</button>
-  <button class="filter-btn" data-type="ยิงธนู">🏹 ยิงธนู</button>
-  <button class="filter-btn" data-type="รักบี้">🏈 รักบี้</button>
-  <button class="filter-btn" data-type="ปีนผา">🧗 ปีนผา</button>
-  <button class="filter-btn" data-type="ฮอกกี้พื้นสนาม">🏑 ฮอกกี้พื้นสนาม</button>
-</div>
+  <div class="filter-tabs">
+    <button class="filter-btn active" data-type="all">🏆 ทั้งหมด</button>
+    <button class="filter-btn" data-type="ฟุตบอล">⚽ ฟุตบอล</button>
+    <button class="filter-btn" data-type="ฟุตซอล">🥅 ฟุตซอล</button>
+    <button class="filter-btn" data-type="บาสเกตบอล">🏀 บาสเกตบอล</button>
+    <button class="filter-btn" data-type="แบดมินตัน">🏸 แบดมินตัน</button>
+    <button class="filter-btn" data-type="เทนนิส">🎾 เทนนิส</button>
+    <button class="filter-btn" data-type="ปิงปอง">🏓 ปิงปอง</button>
+    <button class="filter-btn" data-type="วอลเลย์บอล">🏐 วอลเลย์บอล</button>
+    <button class="filter-btn" data-type="เบสบอล">⚾ เบสบอล</button>
+    <button class="filter-btn" data-type="ยิงธนู">🏹 ยิงธนู</button>
+    <button class="filter-btn" data-type="รักบี้">🏈 รักบี้</button>
+    <button class="filter-btn" data-type="ปีนผา">🧗 ปีนผา</button>
+    <button class="filter-btn" data-type="ฮอกกี้พื้นสนาม">🏑 ฮอกกี้พื้นสนาม</button>
+  </div>
 </section>
 
 <!-- ========== VENUES ========== -->
@@ -1236,7 +1241,7 @@ body {
       <div class="empty-state">
         <div class="empty-state-icon">🏟️</div>
         <div class="empty-state-title">ไม่พบสนามกีฬา</div>
-        <div class="empty-state-text">ขออภัย ไม่มีสนามกีฬาในระบบในขณะนี้</div>
+        <div class="empty-state-text">ขอภัย ไม่มีสนามกีฬาในระบบในขณะนี้</div>
       </div>
     <?php else: foreach ($venues as $venue): 
       $st = $venue['StatusNow'] ?? 'available';
