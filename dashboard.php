@@ -62,6 +62,16 @@ if ($res = $conn->query($sql)) {
   $venues = $res->fetch_all(MYSQLI_ASSOC);
 }
 
+// ดึงจำนวนโปรโมชั่นที่ใช้งานได้ (สำหรับ Employee)
+$activePromoCount = 0;
+if ($role === 'employee') {
+    $promoSql = "SELECT COUNT(*) as count FROM Tbl_Promotion WHERE NOW() BETWEEN StartDate AND EndDate";
+    $promoRes = $conn->query($promoSql);
+    if ($promoRes) {
+        $activePromoCount = $promoRes->fetch_assoc()['count'];
+    }
+}
+
 $conn->close();
 ?>
 <!DOCTYPE html>
@@ -226,6 +236,25 @@ body {
   background: var(--primary);
   color: white;
   transform: translateY(-2px);
+}
+
+.nav-link.promo-link {
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--accent) 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(234, 179, 8, 0.3);
+}
+
+.nav-link.promo-link:hover {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--secondary) 100%);
+  box-shadow: 0 6px 16px rgba(234, 179, 8, 0.4);
+}
+
+.promo-badge {
+  background: rgba(255, 255, 255, 0.3);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 800;
 }
 
 .user-section {
@@ -1059,10 +1088,17 @@ body {
         <a href="my_bookings.php" class="nav-link">📋 การจองของฉัน</a>
         <a href="bookings_calendar_public.php" class="nav-link">📅 ปฏิทินสนาม</a>
         <a href="my_reviews.php" class="nav-link">⭐ รีวิวของฉัน</a>
+        <a href="promotion.php" class="nav-link promo-link">🎁 โปรโมชั่น</a>
       <?php else: ?>
         <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
         <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
+        <a href="promotion_manage.php" class="nav-link promo-link">
+          🎁 จัดการโปรโมชั่น
+          <?php if ($activePromoCount > 0): ?>
+            <span class="promo-badge"><?php echo $activePromoCount; ?></span>
+          <?php endif; ?>
+        </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
       <?php endif; ?>
     </nav>
@@ -1129,16 +1165,41 @@ body {
       <div class="action-title">พร้อมให้บริการ</div>
       <div class="action-desc"><?php echo count(array_filter($venues, fn($v) => $v['StatusNow'] === 'available')); ?> สนาม</div>
     </div>
-    <div class="action-card" onclick="window.location.href='bookings_calendar_public.php'">
-      <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
-      <div class="action-title">ปฏิทินการจอง</div>
-      <div class="action-desc">ดูตารางว่าง</div>
-    </div>
-    <div class="action-card" onclick="window.location.href='my_bookings.php'">
-      <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">📋</div>
-      <div class="action-title">การจองของฉัน</div>
-      <div class="action-desc">ตรวจสอบการจอง</div>
-    </div>
+    <?php if ($role === 'customer'): ?>
+      <div class="action-card" onclick="window.location.href='bookings_calendar_public.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
+        <div class="action-title">ปฏิทินการจอง</div>
+        <div class="action-desc">ดูตารางว่าง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='my_bookings.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">📋</div>
+        <div class="action-title">การจองของฉัน</div>
+        <div class="action-desc">ตรวจสอบการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='promotion.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
+        <div class="action-title">โปรโมชั่นพิเศษ</div>
+        <div class="action-desc">ดูโปรโมชั่นทั้งหมด</div>
+      </div>
+    <?php else: ?>
+      <div class="action-card" onclick="window.location.href='bookings_calendar.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
+        <div class="action-title">ปฏิทินการจอง</div>
+        <div class="action-desc">ดูตารางการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='manage_bookings.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🛠️</div>
+        <div class="action-title">จัดการจอง</div>
+        <div class="action-desc">อนุมัติ/ปฏิเสธการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='promotion_manage.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
+        <div class="action-title">จัดการโปรโมชั่น</div>
+        <div class="action-desc">
+          <?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "สร้างโปรโมชั่นใหม่"; ?>
+        </div>
+      </div>
+    <?php endif; ?>
   </div>
 </section>
 
@@ -1162,7 +1223,6 @@ body {
   <button class="filter-btn" data-type="ปีนผา">🧗 ปีนผา</button>
   <button class="filter-btn" data-type="ฮอกกี้พื้นสนาม">🏑 ฮอกกี้พื้นสนาม</button>
 </div>
-
 </section>
 
 <!-- ========== VENUES ========== -->
@@ -1211,31 +1271,29 @@ body {
           </a>
           
           <div class="venue-info">
-  <div class="info-row">
-    <span class="info-icon">🕐</span>
-    <span>
-      เวลาทำการ:
-      <?= htmlspecialchars(substr($venue['TimeOpen'] ?? '--:--', 0, 5)) ?>
-      -
-      <?= htmlspecialchars(substr($venue['TimeClose'] ?? '--:--', 0, 5)) ?> น.
-    </span>
-  </div>
+            <div class="info-row">
+              <span class="info-icon">🕐</span>
+              <span>
+                เวลาทำการ:
+                <?= htmlspecialchars(substr($venue['TimeOpen'] ?? '--:--', 0, 5)) ?>
+                -
+                <?= htmlspecialchars(substr($venue['TimeClose'] ?? '--:--', 0, 5)) ?> น.
+              </span>
+            </div>
 
-  <div class="info-row">
-    <span class="info-icon">📍</span>
-    <?php
-      // ตัดที่อยู่แบบรองรับภาษาไทย (กันตัวหนังสือเพี้ยน)
-      $addr = trim($venue['Address'] ?? 'กรุงเทพมหานคร');
-      $addrShort = function_exists('mb_strimwidth')
-        ? mb_strimwidth($addr, 0, 50, '…', 'UTF-8')              // แนะนำ
-        : (function_exists('mb_substr') ? mb_substr($addr, 0, 50, 'UTF-8') : $addr);  // fallback
-    ?>
-    <span title="<?= htmlspecialchars($addr) ?>">
-      <?= htmlspecialchars($addrShort) ?>
-    </span>
-  </div>
-</div>
-
+            <div class="info-row">
+              <span class="info-icon">📍</span>
+              <?php
+                $addr = trim($venue['Address'] ?? 'กรุงเทพมหานคร');
+                $addrShort = function_exists('mb_strimwidth')
+                  ? mb_strimwidth($addr, 0, 50, '…', 'UTF-8')
+                  : (function_exists('mb_substr') ? mb_substr($addr, 0, 50, 'UTF-8') : $addr);
+              ?>
+              <span title="<?= htmlspecialchars($addr) ?>">
+                <?= htmlspecialchars($addrShort) ?>
+              </span>
+            </div>
+          </div>
           
           <div class="venue-price">
             <div class="price-label">ราคาเริ่มต้น</div>
@@ -1338,7 +1396,6 @@ function performSearch() {
     }
   });
   
-  // Scroll to venues section
   if (query !== '') {
     document.getElementById('venues').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
