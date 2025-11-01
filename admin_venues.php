@@ -18,7 +18,7 @@ include 'db_connect.php';
 
 // Fetch venue types for dropdown
 $types = [];
-$typeSql = "SELECT VenueTypeID, TypeName FROM Tbl_venue_type ORDER BY TypeName ASC";
+$typeSql = "SELECT VenueTypeID, TypeName FROM Tbl_Venue_type ORDER BY TypeName ASC";
 if ($res = $conn->query($typeSql)) {
     while ($row = $res->fetch_assoc()) { $types[] = $row; }
     $res->free();
@@ -28,7 +28,7 @@ if ($res = $conn->query($typeSql)) {
 $editing = false;
 $editRow = null;
 if (isset($_GET['id']) && ctype_digit($_GET['id'])) {
-    $stmt = $conn->prepare("SELECT * FROM Tbl_venue WHERE VenueID = ?");
+    $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ?");
     $stmt->bind_param("i", $_GET['id']);
     $stmt->execute();
     $editRow = $stmt->get_result()->fetch_assoc();
@@ -41,8 +41,8 @@ $venues = [];
 $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 if ($search !== '') {
     $like = '%' . $search . '%';
-    $stmt = $conn->prepare("SELECT v.*, t.TypeName FROM Tbl_venue v 
-        JOIN Tbl_venue_type t ON v.VenueTypeID = t.VenueTypeID
+    $stmt = $conn->prepare("SELECT v.*, t.TypeName FROM Tbl_Venue v 
+        JOIN Tbl_Venue_type t ON v.VenueTypeID = t.VenueTypeID
         WHERE v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?
         ORDER BY v.VenueID DESC");
     $stmt->bind_param("sss", $like, $like, $like);
@@ -50,8 +50,8 @@ if ($search !== '') {
     $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 } else {
-    $sql = "SELECT v.*, t.TypeName FROM Tbl_venue v 
-            JOIN Tbl_venue_type t ON v.VenueTypeID = t.VenueTypeID
+    $sql = "SELECT v.*, t.TypeName FROM Tbl_Venue v 
+            JOIN Tbl_Venue_type t ON v.VenueTypeID = t.VenueTypeID
             ORDER BY v.VenueID DESC";
     if ($res = $conn->query($sql)) {
         $venues = $res->fetch_all(MYSQLI_ASSOC);

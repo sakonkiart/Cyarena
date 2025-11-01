@@ -25,7 +25,7 @@ if ($venueId <= 0) {
 }
 
 // ดึงข้อมูลสนาม (เพื่อใช้ตรวจสอบ/ลบไฟล์รูปหากจำเป็น)
-$stmt = $conn->prepare("SELECT VenueName, ImageURL FROM Tbl_venue WHERE VenueID = ?");
+$stmt = $conn->prepare("SELECT VenueName, ImageURL FROM Tbl_Venue WHERE VenueID = ?");
 $stmt->bind_param("i", $venueId);
 $stmt->execute();
 $venue = $stmt->get_result()->fetch_assoc();
@@ -40,7 +40,7 @@ if (!$venue) {
 // ✅ ไม่อนุญาตให้ลบถ้ามีการจองที่ยังไม่จบ/ไม่ถูกยกเลิก
 // อิงตามตรรกะก่อนหน้า: BookingStatusID NOT IN (3,4) = ยังไม่จบ/ไม่ถูกยกเลิก
 $active = 0;
-$stmt = $conn->prepare("SELECT COUNT(*) AS c FROM Tbl_booking WHERE VenueID = ? AND BookingStatusID NOT IN (3,4)");
+$stmt = $conn->prepare("SELECT COUNT(*) AS c FROM Tbl_Booking WHERE VenueID = ? AND BookingStatusID NOT IN (3,4)");
 $stmt->bind_param("i", $venueId);
 $stmt->execute();
 $stmt->bind_result($active);
@@ -54,7 +54,7 @@ if ($active > 0) {
 }
 
 // ✅ ถ้าต้องการกัน foreign key จากตารางรีวิว ให้ลบรีวิวก่อน (ถ้ามี)
-$stmt = $conn->prepare("DELETE FROM Tbl_review WHERE VenueID = ?");
+$stmt = $conn->prepare("DELETE FROM Tbl_Review WHERE VenueID = ?");
 $stmt->bind_param("i", $venueId);
 $stmt->execute();
 $stmt->close();
@@ -63,7 +63,7 @@ $stmt->close();
 // ที่นี่เราไม่ลบประวัติการจอง (ถ้ามี) เพื่อเก็บประวัติไว้ — และเราได้บล็อกกรณีที่ยังมีการจองค้างไว้แล้ว
 
 // ✅ ลบสนาม
-$stmt = $conn->prepare("DELETE FROM Tbl_venue WHERE VenueID = ? LIMIT 1");
+$stmt = $conn->prepare("DELETE FROM Tbl_Venue WHERE VenueID = ? LIMIT 1");
 $stmt->bind_param("i", $venueId);
 $ok = $stmt->execute();
 $stmt->close();

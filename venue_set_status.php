@@ -28,7 +28,7 @@ if ($VenueID <= 0 || !in_array($Status, $allow, true)) {
     exit;
 }
 
-$stmt = $conn->prepare("UPDATE Tbl_venue SET Status=? WHERE VenueID=?");
+$stmt = $conn->prepare("UPDATE Tbl_Venue SET Status=? WHERE VenueID=?");
 $stmt->bind_param("si", $Status, $VenueID);
 $ok = $stmt->execute();
 $stmt->close();

@@ -55,7 +55,7 @@ if (!empty($_FILES['ImageFile']['name']) && $_FILES['ImageFile']['error'] === UP
 if ($VenueID > 0) {
     // อัปเดต
     if ($imageUrl) {
-        $sql = "UPDATE Tbl_venue
+        $sql = "UPDATE Tbl_Venue
                 SET VenueName=?, VenueTypeID=?, PricePerHour=?, TimeOpen=?, TimeClose=?, Address=?, Description=?, Status=?, ImageURL=?
                 WHERE VenueID=?";
         $stmt = $conn->prepare($sql);
@@ -63,7 +63,7 @@ if ($VenueID > 0) {
             $VenueName, $VenueTypeID, $PricePerHour, $TimeOpen, $TimeClose, $Address, $Description, $Status, $imageUrl, $VenueID
         );
     } else {
-        $sql = "UPDATE Tbl_venue
+        $sql = "UPDATE Tbl_Venue
                 SET VenueName=?, VenueTypeID=?, PricePerHour=?, TimeOpen=?, TimeClose=?, Address=?, Description=?, Status=?
                 WHERE VenueID=?";
         $stmt = $conn->prepare($sql);
@@ -78,7 +78,7 @@ if ($VenueID > 0) {
 
 } else {
     // เพิ่มใหม่
-    $sql = "INSERT INTO Tbl_venue (VenueName, VenueTypeID, PricePerHour, TimeOpen, TimeClose, Address, Description, Status, ImageURL)
+    $sql = "INSERT INTO Tbl_Venue (VenueName, VenueTypeID, PricePerHour, TimeOpen, TimeClose, Address, Description, Status, ImageURL)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("sidssssss",

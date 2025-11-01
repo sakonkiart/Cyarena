@@ -20,7 +20,7 @@ if (!is_dir($avatarDir)) {
 
 // โหลดข้อมูลปัจจุบัน
 $sql = "SELECT CustomerID, FirstName, LastName, Phone, AvatarPath
-        FROM Tbl_customer
+        FROM Tbl_Customer
         WHERE CustomerID = ?";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param('i', $uid);
@@ -93,13 +93,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // บันทึก
     if (!$errors) {
       if ($newAvatarRel) {
-        $upd = $conn->prepare("UPDATE Tbl_customer
+        $upd = $conn->prepare("UPDATE Tbl_Customer
                                SET FirstName=?, LastName=?, Phone=?, AvatarPath=?
                                WHERE CustomerID=?");
         $upd->bind_param('ssssi', $first, $last, $phone, $newAvatarRel, $uid);
         $_SESSION['avatar_path'] = $newAvatarRel;
       } else {
-        $upd = $conn->prepare("UPDATE Tbl_customer
+        $upd = $conn->prepare("UPDATE Tbl_Customer
                                SET FirstName=?, LastName=?, Phone=?
                                WHERE CustomerID=?");
         $upd->bind_param('sssi', $first, $last, $phone, $uid);
