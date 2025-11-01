@@ -83,26 +83,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
         if (!is_dir($upload_dir)) {
             mkdir($upload_dir, 0755, true);
         }
-        
-        $file_extension = pathinfo($_FILES['payment_slip']['name'], PATHINFO_EXTENSION);
-        $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
-        
-        if (in_array(strtolower($file_extension), $allowed_extensions)) {
-            $new_filename = 'slip_' . $booking_id . '_' . time() . '.' . $file_extension;
-            $slip_path = $upload_dir . $new_filename;
-            
-            if (move_uploaded_file($_FILES['payment_slip']['tmp_name'], $slip_path)) {
-                // File uploaded successfully
-            } else {
-                $_SESSION['error_message'] = "❌ ไม่สามารถอัพโหลดสลิปได้";
-                header("Location: my_bookings.php");
-                exit;
-            }
-        } else {
-            $_SESSION['error_message'] = "❌ รองรับเฉพาะไฟล์ JPG, PNG หรือ PDF เท่านั้น";
-            header("Location: my_bookings.php");
-            exit;
-        }
+        // ===== upload dir (เว็บ/ไฟล์จริง) =====
+$uploadWeb = 'uploads/payment_slips';          // ใช้เก็บลง DB/แสดงผล
+$uploadAbs = __DIR__ . '/' . $uploadWeb;       // path จริงบนเครื่อง
+
+// สร้างโฟลเดอร์ถ้ายังไม่มี + ตั้งสิทธิ์ให้เขียนได้
+if (!is_dir($uploadAbs)) {
+    mkdir($uploadAbs, 0775, true);
+}
+if (!is_writable($uploadAbs)) {
+    @chmod($uploadAbs, 0775); // best effort
+}
+
+       $file_extension = strtolower(pathinfo($_FILES['payment_slip']['name'], PATHINFO_EXTENSION));
+$allowed_extensions = ['jpg', 'jpeg', 'png', 'webp', 'pdf']; // จะคงเดิมก็ได้
+
+if (in_array($file_extension, $allowed_extensions, true)) {
+
+    $new_filename = 'slip_' . (int)$booking_id . '_' . time() . '.' . $file_extension;
+
+    // path จริงที่ใช้ย้ายไฟล์
+    $abs_path = $uploadAbs . '/' . $new_filename;
+
+    // path ที่เก็บลง DB/ไว้แสดงผลใน <img src> (relative จาก docroot)
+    $slip_path = $uploadWeb . '/' . $new_filename;
+
+    if (move_uploaded_file($_FILES['payment_slip']['tmp_name'], $abs_path)) {
+        // ✅ ย้ายสำเร็จ -> ใช้ $slip_path บันทึกลง DB ต่อได้เลย
+        // ตัวอย่าง:
+        // $stmt = $conn->prepare("UPDATE Tbl_Booking SET PaymentSlipPath=? WHERE BookingID=?");
+        // $stmt->bind_param('si', $slip_path, $booking_id);
+        // $stmt->execute();
+
+        $_SESSION['success_message'] = "อัปโหลดสลิปเรียบร้อย";
+        header("Location: my_bookings.php");
+        exit;
+    } else {
+        $_SESSION['error_message'] = "❌ ไม่สามารถอัปโหลดสลิปได้ (เขียนไฟล์ไม่สำเร็จ)";
+        header("Location: my_bookings.php");
+        exit;
+    }
+
+} else {
+    $_SESSION['error_message'] = "❌ รองรับเฉพาะไฟล์ JPG, JPEG, PNG, WEBP หรือ PDF เท่านั้น";
+    header("Location: my_bookings.php");
+    exit;
+}
+
     }
     
     // Update payment status and slip path
