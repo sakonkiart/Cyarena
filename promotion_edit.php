@@ -54,104 +54,543 @@ if (isset($_POST['update_promo'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>แก้ไขโปรโมชั่น - CY Arena</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-body {
-  font-family: "Prompt", sans-serif;
-  background: #f1f5f9;
-  color: #1e293b;
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1e40af;
+  --primary-light: #3b82f6;
+  --secondary: #eab308;
+  --accent: #f97316;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --gray-50: #fafaf9;
+  --gray-100: #f5f5f4;
+  --gray-200: #e7e5e4;
+  --gray-700: #44403c;
+  --gray-900: #1c1917;
+}
+
+* {
   margin: 0;
-}
-.container {
-  max-width: 700px;
-  margin: 50px auto;
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-  padding: 30px 40px;
-}
-h1 {
-  text-align: center;
-  color: #0f172a;
-  margin-bottom: 25px;
-}
-label {
-  font-weight: 600;
-  display: block;
-  margin-top: 12px;
-}
-input, textarea, select {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  margin-top: 6px;
+  padding: 0;
   box-sizing: border-box;
 }
-button {
-  margin-top: 20px;
-  padding: 12px 18px;
-  border: none;
-  background: #3b82f6;
+
+body {
+  font-family: 'Sarabun', 'Kanit', sans-serif;
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+  min-height: 100vh;
+  padding: 2rem 1rem;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  animation: slideUp 0.6s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.header {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  animation: pulse 4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+.header-content {
+  position: relative;
+  z-index: 1;
+}
+
+.header-icon {
+  width: 80px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  margin: 0 auto 1rem;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+h1 {
+  font-family: 'Kanit', sans-serif;
   color: white;
-  border-radius: 8px;
-  font-weight: bold;
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+.form-container {
+  padding: 2.5rem 2rem;
+}
+
+.form-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+label {
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.label-icon {
+  font-size: 1.1rem;
+}
+
+.required {
+  color: var(--danger);
+  font-weight: 800;
+}
+
+input, textarea, select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid var(--gray-200);
+  border-radius: 12px;
+  font-size: 1rem;
+  font-family: 'Sarabun', sans-serif;
+  transition: all 0.3s;
+  background: var(--gray-50);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: white;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+  transform: translateY(-2px);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.6;
+}
+
+select {
   cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1.25rem;
+  padding-right: 3rem;
 }
-button:hover {
-  background: #2563eb;
+
+.input-hint {
+  font-size: 0.85rem;
+  color: var(--gray-700);
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
-.back-btn {
-  display: inline-block;
+
+.discount-preview {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 2px solid var(--primary-light);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.discount-preview-icon {
+  font-size: 2rem;
+}
+
+.discount-preview-text {
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-size: 1.1rem;
+}
+
+/* Advanced Section - Hidden by default */
+.advanced-section {
+  margin-top: 1.5rem;
+  border-top: 2px dashed var(--gray-200);
+  padding-top: 1.5rem;
+}
+
+.toggle-advanced {
+  background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
+  border: 2px solid var(--gray-300);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 700;
+  color: var(--gray-700);
+  font-size: 1rem;
+}
+
+.toggle-advanced:hover {
+  background: linear-gradient(135deg, var(--gray-200) 0%, var(--gray-300) 100%);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.toggle-icon {
+  transition: transform 0.3s;
+  font-size: 1.25rem;
+}
+
+.toggle-advanced.active .toggle-icon {
+  transform: rotate(180deg);
+}
+
+.advanced-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease-out;
+}
+
+.advanced-content.show {
+  max-height: 500px;
+  margin-top: 1.5rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 2px solid var(--gray-200);
+}
+
+.btn {
+  flex: 1;
+  padding: 1rem 1.5rem;
+  border: none;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   text-decoration: none;
-  background: #94a3b8;
-  color: white;
-  padding: 10px 16px;
-  border-radius: 8px;
-  margin-top: 10px;
-  margin-left: 10px;
+  font-family: 'Sarabun', sans-serif;
 }
-.back-btn:hover {
-  background: #64748b;
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+
+.btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.5);
+}
+
+.btn-secondary {
+  background: white;
+  color: var(--gray-700);
+  border: 2px solid var(--gray-300);
+}
+
+.btn-secondary:hover {
+  background: var(--gray-50);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-2px);
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .button-group {
+    flex-direction: column-reverse;
+  }
+  
+  .header {
+    padding: 2rem 1.5rem;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+  }
+  
+  .form-container {
+    padding: 2rem 1.5rem;
+  }
+}
+
+/* Success Animation */
+@keyframes success {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.success-message {
+  animation: success 0.5s ease-out;
 }
 </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>✏️ แก้ไขโปรโมชั่น</h1>
+  <div class="header">
+    <div class="header-content">
+      <div class="header-icon">✏️</div>
+      <h1>แก้ไขโปรโมชั่น</h1>
+      <div class="subtitle">อัปเดตข้อมูลโปรโมชั่นและส่วนลดสำหรับลูกค้า</div>
+    </div>
+  </div>
 
-  <form method="POST">
-    <label>ชื่อโปรโมชั่น</label>
-    <input type="text" name="PromoName" value="<?php echo htmlspecialchars($promo['PromoName']); ?>" required>
+  <div class="form-container">
+    <form method="POST" id="promoForm">
+      <div class="form-grid">
+        
+        <!-- Row 1: ชื่อโปรโมชั่น และ รหัสโปรโมชั่น -->
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <span class="label-icon">🎁</span>
+              ชื่อโปรโมชั่น
+              <span class="required">*</span>
+            </label>
+            <input type="text" name="PromoName" value="<?php echo htmlspecialchars($promo['PromoName']); ?>" required placeholder="เช่น โปรส่วนลดวันธรรมดา">
+          </div>
 
-    <label>รหัสโปรโมชั่น</label>
-    <input type="text" name="PromoCode" value="<?php echo htmlspecialchars($promo['PromoCode']); ?>" required>
+          <div class="form-group">
+            <label>
+              <span class="label-icon">🏷️</span>
+              รหัสโปรโมชั่น
+              <span class="required">*</span>
+            </label>
+            <input type="text" name="PromoCode" value="<?php echo htmlspecialchars($promo['PromoCode']); ?>" required placeholder="เช่น WEEKDAY20" style="text-transform: uppercase;">
+            <div class="input-hint">💡 ลูกค้าจะใช้รหัสนี้ในการรับส่วนลด</div>
+          </div>
+        </div>
 
-    <label>คำอธิบาย</label>
-    <textarea name="Description" rows="3"><?php echo htmlspecialchars($promo['Description']); ?></textarea>
+        <!-- คำอธิบาย -->
+        <div class="form-group full-width">
+          <label>
+            <span class="label-icon">📝</span>
+            คำอธิบาย
+          </label>
+          <textarea name="Description" rows="3" placeholder="อธิบายรายละเอียดโปรโมชั่นให้ลูกค้าเข้าใจง่าย"><?php echo htmlspecialchars($promo['Description']); ?></textarea>
+        </div>
 
-    <label>ประเภทส่วนลด</label>
-    <select name="DiscountType" required>
-      <option value="percent" <?php if($promo['DiscountType']=='percent') echo 'selected'; ?>>เปอร์เซ็นต์ (%)</option>
-      <option value="fixed" <?php if($promo['DiscountType']=='fixed') echo 'selected'; ?>>จำนวนเงิน (บาท)</option>
-    </select>
+        <!-- Row 2: ประเภทส่วนลด และ มูลค่า -->
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <span class="label-icon">💰</span>
+              ประเภทส่วนลด
+              <span class="required">*</span>
+            </label>
+            <select name="DiscountType" id="discountType" required>
+              <option value="percent" <?php if($promo['DiscountType']=='percent') echo 'selected'; ?>>เปอร์เซ็นต์ (%)</option>
+              <option value="fixed" <?php if($promo['DiscountType']=='fixed') echo 'selected'; ?>>จำนวนเงิน (บาท)</option>
+            </select>
+          </div>
 
-    <label>มูลค่าส่วนลด</label>
-    <input type="number" step="0.01" name="DiscountValue" value="<?php echo $promo['DiscountValue']; ?>" required>
+          <div class="form-group">
+            <label>
+              <span class="label-icon">💵</span>
+              มูลค่าส่วนลด
+              <span class="required">*</span>
+            </label>
+            <input type="number" step="0.01" name="DiscountValue" id="discountValue" value="<?php echo $promo['DiscountValue']; ?>" required placeholder="0.00">
+            <div class="discount-preview" id="discountPreview">
+              <span class="discount-preview-icon">🎉</span>
+              <span class="discount-preview-text" id="previewText">ลด <?php echo $promo['DiscountType'] == 'percent' ? $promo['DiscountValue'].'%' : number_format($promo['DiscountValue'], 2).' บาท'; ?></span>
+            </div>
+          </div>
+        </div>
 
-    <label>วันเริ่มต้น</label>
-    <input type="datetime-local" name="StartDate" value="<?php echo date('Y-m-d\TH:i', strtotime($promo['StartDate'])); ?>" required>
+        <!-- Row 3: วันเริ่มต้น และ วันสิ้นสุด -->
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <span class="label-icon">📅</span>
+              วันเริ่มต้น
+              <span class="required">*</span>
+            </label>
+            <input type="datetime-local" name="StartDate" value="<?php echo date('Y-m-d\TH:i', strtotime($promo['StartDate'])); ?>" required>
+          </div>
 
-    <label>วันสิ้นสุด</label>
-    <input type="datetime-local" name="EndDate" value="<?php echo date('Y-m-d\TH:i', strtotime($promo['EndDate'])); ?>" required>
-    
-    <label>เงื่อนไขการใช้งาน</label>
-    <textarea name="Conditions" rows="3"><?php echo htmlspecialchars($promo['Conditions']); ?></textarea>
+          <div class="form-group">
+            <label>
+              <span class="label-icon">⏰</span>
+              วันสิ้นสุด
+              <span class="required">*</span>
+            </label>
+            <input type="datetime-local" name="EndDate" value="<?php echo date('Y-m-d\TH:i', strtotime($promo['EndDate'])); ?>" required>
+          </div>
+        </div>
 
-    <button type="submit" name="update_promo">💾 บันทึกการแก้ไข</button>
-    <a href="promotion_manage.php" class="back-btn">⬅ กลับ</a>
-  </form>
+        <!-- Advanced Section (Hidden) -->
+        <div class="advanced-section">
+          <button type="button" class="toggle-advanced" id="toggleAdvanced">
+            <span>⚙️ เงื่อนไขการใช้งาน (ตัวเลือกเพิ่มเติม)</span>
+            <span class="toggle-icon">▼</span>
+          </button>
+          
+          <div class="advanced-content" id="advancedContent">
+            <div class="form-group">
+              <label>
+                <span class="label-icon">📋</span>
+                เงื่อนไขการใช้งาน
+              </label>
+              <textarea name="Conditions" rows="4" placeholder="ระบุเงื่อนไขการใช้งาน เช่น ใช้ได้เฉพาะวันธรรมดา, จองขั้นต่ำ 2 ชั่วโมง"><?php echo htmlspecialchars($promo['Conditions']); ?></textarea>
+              <div class="input-hint">💡 ระบุเงื่อนไขเพิ่มเติมที่ลูกค้าต้องทราบ (ถ้ามี)</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="button-group">
+        <a href="promotion_manage.php" class="btn btn-secondary">
+          ← ยกเลิก
+        </a>
+        <button type="submit" name="update_promo" class="btn btn-primary">
+          💾 บันทึกการแก้ไข
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
+
+<script>
+// Toggle Advanced Section
+document.getElementById('toggleAdvanced').addEventListener('click', function() {
+  const content = document.getElementById('advancedContent');
+  const button = this;
+  
+  button.classList.toggle('active');
+  content.classList.toggle('show');
+});
+
+// Update Discount Preview
+function updatePreview() {
+  const type = document.getElementById('discountType').value;
+  const value = parseFloat(document.getElementById('discountValue').value) || 0;
+  const previewText = document.getElementById('previewText');
+  
+  if (type === 'percent') {
+    previewText.textContent = `ลด ${value}%`;
+  } else {
+    previewText.textContent = `ลด ${value.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})} บาท`;
+  }
+}
+
+document.getElementById('discountType').addEventListener('change', updatePreview);
+document.getElementById('discountValue').addEventListener('input', updatePreview);
+
+// Form Validation
+document.getElementById('promoForm').addEventListener('submit', function(e) {
+  const startDate = new Date(document.querySelector('input[name="StartDate"]').value);
+  const endDate = new Date(document.querySelector('input[name="EndDate"]').value);
+  
+  if (endDate <= startDate) {
+    e.preventDefault();
+    alert('⚠️ วันสิ้นสุดต้องมาหลังวันเริ่มต้น');
+    return false;
+  }
+});
+</script>
 
 </body>
 </html>
