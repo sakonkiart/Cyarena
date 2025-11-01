@@ -465,13 +465,155 @@ select:focus {
     flex-wrap: wrap;
   }
 }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo"><i class="fas fa-futbol"></i> CY Arena</div>
+  <div class="user-info">
+    <span class="user-name">สวัสดี, <?php echo htmlspecialchars($customerName); ?></span>
+    <a href="logout.php" class="logout-btn">
+      <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+    </a>
+  </div>
+</header>
+
+<div class="container">
+  <div class="venue-card">
+    <div class="venue-header">
+      <h1 class="venue-title"><?php echo htmlspecialchars($venue['VenueName']); ?></h1>
+      <span class="venue-type">
+        <i class="fas fa-tag"></i> <?php echo htmlspecialchars($venue['TypeName']); ?>
+      </span>
+    </div>
+
+    <div class="venue-details">
+      <?php if (!empty($venue['Description'])): ?>
+      <div class="detail-row">
+        <div class="detail-icon"><i class="fas fa-info-circle"></i></div>
+        <div class="detail-content">
+          <div class="detail-label">รายละเอียดสนาม</div>
+          <div class="detail-value"><?php echo nl2br(htmlspecialchars($venue['Description'])); ?></div>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <div class="detail-row">
+        <div class="detail-icon"><i class="fas fa-money-bill-wave"></i></div>
+        <div class="detail-content">
+          <div class="detail-label">ราคา / ชั่วโมง</div>
+          <div class="detail-value price-highlight">฿<?php echo number_format($venue['PricePerHour'], 2); ?></div>
+        </div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-icon"><i class="fas fa-clock"></i></div>
+        <div class="detail-content">
+          <div class="detail-label">เวลาทำการ</div>
+          <div class="detail-value">
+            <?php echo date("H:i", strtotime($venue['TimeOpen'])); ?> - 
+            <?php echo date("H:i", strtotime($venue['TimeClose'])); ?> น.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="booking-card">
+    <h2 class="section-title">
+      <i class="fas fa-calendar-check"></i> กรอกรายละเอียดการจอง
+    </h2>
+
+    <form action="confirm_booking.php" method="POST" id="bookingForm">
+      <input type="hidden" name="venue_id" id="venue_id" value="<?php echo (int)$venue_id; ?>">
+      <input type="hidden" name="promotion_id" id="promotion_id" value="">
+      <input type="hidden" name="total_price" id="total_price" value="">
+      <input type="hidden" name="start_time" id="start_time">
+      <input type="hidden" name="end_time" id="end_time">
+      <input type="hidden" id="open_24" value="<?= date('H:i', strtotime($venue['TimeOpen'])) ?>">
+      <input type="hidden" id="close_24" value="<?= date('H:i', strtotime($venue['TimeClose'])) ?>">
+
+      <div class="form-group">
+        <label><i class="far fa-calendar"></i> เลือกวันที่</label>
+        <input type="date" name="booking_date" id="booking_date" required 
+               min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>">
+      </div>
+
+      <div class="form-group">
+        <label><i class="far fa-clock"></i> เวลาเริ่ม</label>
+        <div class="time-row">
+          <select id="hh12"><option value="">--</option></select>
+          <span class="time-separator">:</span>
+          <select id="mm"><option value="">--</option></select>
+          <select id="ampm">
+            <option value="AM">AM</option>
+            <option value="PM">PM</option>
+          </select>
+        </div>
+        <div class="help-text">
+          <i class="fas fa-info-circle"></i>
+          เลือกได้ทีละ 30 นาที (ถ้าเป็นวันนี้จะไม่ให้เร็วกว่าปัจจุบัน)
+        </div>
+        <div id="startHelp" class="help-text"></div>
+      </div>
+
+      <div class="form-group">
+        <label><i class="fas fa-hourglass-half"></i> จำนวนชั่วโมง</label>
+        <input type="number" name="hours" id="hours" min="1" step="0.5" value="1" required>
+      </div>
+
+      <div class="form-group">
+        <label><i class="fas fa-check-circle"></i> เวลาเสร็จสิ้น (คำนวดอัตโนมัติ)</label>
+        <input type="text" id="end_time_display" class="readonly-field" readonly placeholder="--:-- --">
+        <div id="endHelp" class="help-text"></div>
+      </div>
+
+      <div class="form-group">
+        <label><i class="fas fa-gift"></i> รหัสโปรโมชั่น (ถ้ามี)</label>
+        <div class="promo-group">
+          <input type="text" id="promoCode" name="promo_code" placeholder="กรอกรหัสโปรโมชั่น">
+          <button type="button" class="check-promo-btn" onclick="checkPromotion()">
+            <i class="fas fa-check"></i> ตรวจสอบ
+          </button>
+        </div>
+        <div id="promoResult"></div>
+      </div>
+
+      <!-- 💰 สรุปราคา -->
+      <div class="price-summary">
+        <div class="price-row">
+          <span class="label">ราคาต้นทุน:</span>
+          <span class="value" id="base_price_display">฿0.00</span>
+        </div>
+        <div class="price-row" id="discount_row" style="display: none;">
+          <span class="label">ส่วนลด:</span>
+          <span class="value discount-value" id="discount_display">-฿0.00</span>
+        </div>
+        <div class="price-row total">
+          <span class="label">💵 ยอดชำระ:</span>
+          <span class="value" id="net_price_display">฿0.00</span>
+        </div>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">
+        <i class="fas fa-calendar-check"></i> ยืนยันการจอง
+      </button>
+    </form>
+  </div>
+
+  <a href="dashboard.php" class="back-link">
+    <i class="fas fa-arrow-left"></i> กลับไปเลือกสนาม
+  </a>
+</div>
+
 <script>
 // 🎯 ตัวแปรสำหรับเก็บข้อมูลโปรโมชั่น
 let currentPromoData = null;
 const pricePerHour = <?php echo (float)$venue['PricePerHour']; ?>;
 
 // 🔗 ตัวแปรสำหรับเก็บ DOM Elements และค่าคงที่ (Global Scope)
-// ประกาศตัวแปรเหล่านี้ไว้ภายนอก IIFE เพื่อให้ฟังก์ชันที่ถูกย้ายออกมา (computeEnd) สามารถเข้าถึงได้
+// ตัวแปรเหล่านี้ถูกประกาศใน Global Scope เพื่อให้ computeEnd() เข้าถึงได้
 let dateEl, hh12El, mmEl, apEl, startHidden, hoursEl, endDisp, endHidden, startHelp, endHelp, submitBtn;
 let open24, close24, totalPriceEl;
 let basePriceEl, discountRowEl, discountEl, netPriceEl;
@@ -497,10 +639,10 @@ function addMinutes(hhmm, mins){
   let [h,m]=hhmm.split(':').map(Number);
   let t=h*60+m+mins;
   if (t<0) t=0;
-  return `${pad2(Math.floor(t/60) % 24)}:${pad2(t%60)}`; // ปรับแก้ให้รองรับการข้ามวัน
+  return `${pad2(Math.floor(t/60) % 24)}:${pad2(t%60)}`; 
 }
 function roundUpTo30(hhmm){
-  let [h,m]=hhmm.split(':'.map(Number);
+  let [h,m]=hhmm.split(':').map(Number);
   const mins=h*60+m;
   const add=(30-(mins%30))%30;
   const next=mins+add;
@@ -512,7 +654,7 @@ function nowHHMM(){
 }
 
 // ----------------------------------------------------------------
-// ⭐ computeEnd() ถูกย้ายมา Global Scope
+// ⭐ computeEnd() ถูกย้ายมา Global Scope เพื่อให้ checkPromotion เรียกใช้ได้
 // ----------------------------------------------------------------
 function computeEnd(){
   // ตรวจสอบว่ามีการโหลด DOM Elements แล้วหรือยัง
@@ -575,7 +717,7 @@ function computeEnd(){
 }
 
 // ----------------------------------------------------------------
-// ฟังก์ชันตรวจสอบโปรโมชั่น (คงเดิม แต่ตอนนี้เรียก computeEnd ได้แล้ว)
+// ฟังก์ชันตรวจสอบโปรโมชั่น (แก้ไขให้เรียก computeEnd ที่ Global)
 // ----------------------------------------------------------------
 function checkPromotion() {
   const code = document.getElementById('promoCode').value.trim();
@@ -613,7 +755,8 @@ function checkPromotion() {
       currentPromoData = null;
       resultEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
       resultEl.className = 'show error';
-      computeEnd();
+      // ⭐ บรรทัดนี้จะไม่เกิด ReferenceError อีกต่อไป
+      computeEnd(); 
     });
 }
 
@@ -623,6 +766,7 @@ function checkPromotion() {
 // ----------------------------------------------------------------
 (function(){
   // 1. กำหนดค่าให้ตัวแปร Global
+  // ตัวแปรที่ถูกประกาศด้วย let ด้านบน จะถูกกำหนดค่าที่นี่
   dateEl = document.getElementById('booking_date');
   hh12El = document.getElementById('hh12');
   mmEl = document.getElementById('mm');
@@ -679,7 +823,7 @@ function checkPromotion() {
   function autoClampToAllowed(){
     if (!hh12El.value || !mmEl.value || !apEl.value) {
       startHidden.value=''; endDisp.value=''; endHidden.value=''; 
-      computeEnd(); // เรียก computeEnd ที่ Global
+      computeEnd(); 
       return;
     }
     let st24 = to24_from_parts(hh12El.value, mmEl.value, apEl.value);
@@ -707,10 +851,8 @@ function checkPromotion() {
     }
 
     startHidden.value = st24;
-    computeEnd(); // เรียก computeEnd ที่ Global
+    computeEnd(); 
   }
-
-  // ⭐⭐ ลบฟังก์ชัน computeEnd() ที่เคยอยู่ตรงนี้ออกไปแล้ว ⭐⭐
   
   buildStaticLists();
   applyMinForToday();
