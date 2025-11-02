@@ -236,52 +236,94 @@ body::before {
   animation: pulse 4s ease-in-out infinite;
 }
 
-.promo-badge {
-  display: inline-block;
-  background: rgba(255, 255, 255, 0.25);
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+/* 🔥 รหัสโปรโมชั่นเด่นชัดขึ้น */
+.promo-code-container {
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
-  padding: 0.4rem 1rem;
-  border-radius: 50px;
-  font-size: 0.8rem;
-  font-weight: 800;
-  color: white;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 16px;
+  border: 3px dashed var(--primary-light);
+  margin-bottom: 1rem;
   position: relative;
   z-index: 1;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+.code-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 0.5rem;
 }
 
 .promo-code {
   font-family: 'Kanit', sans-serif;
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-weight: 900;
-  color: white;
-  margin-bottom: 0.5rem;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  position: relative;
-  z-index: 1;
-  letter-spacing: 2px;
+  color: var(--primary);
+  letter-spacing: 3px;
+  text-shadow: 0 2px 10px rgba(37, 99, 235, 0.3);
+  line-height: 1;
+  user-select: all;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.promo-code:hover {
+  color: var(--primary-light);
+  transform: scale(1.05);
+}
+
+.copy-hint {
+  font-size: 0.7rem;
+  color: var(--gray-700);
+  margin-top: 0.5rem;
+  font-weight: 600;
 }
 
 .promo-name {
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.95);
-  font-weight: 600;
+  font-size: 1.5rem;
+  color: white;
+  font-weight: 800;
   position: relative;
   z-index: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  margin-bottom: 0.5rem;
+  font-family: 'Kanit', sans-serif;
 }
 
 .promo-body {
   padding: 1.75rem;
 }
 
+/* 🔥 แสดงคำอธิบายแทนเงื่อนไข */
 .promo-description {
-  color: var(--gray-700);
-  line-height: 1.6;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid var(--primary-light);
+  border-radius: 12px;
+  padding: 1.25rem;
   margin-bottom: 1.5rem;
+  color: var(--gray-900);
+  line-height: 1.7;
   font-size: 0.95rem;
+  font-weight: 500;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.description-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
 }
 
 .promo-discount {
@@ -425,26 +467,6 @@ body::before {
   color: white;
 }
 
-/* Conditions */
-.promo-conditions {
-  background: #fef3c7;
-  border: 2px solid #fbbf24;
-  border-radius: 10px;
-  padding: 1rem;
-  margin-top: 1rem;
-  font-size: 0.85rem;
-  color: #92400e;
-  line-height: 1.6;
-}
-
-.conditions-title {
-  font-weight: 800;
-  margin-bottom: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   body {
@@ -480,6 +502,10 @@ body::before {
     bottom: 1rem;
     right: 1rem;
     padding: 0.875rem 1.5rem;
+  }
+  
+  .promo-code {
+    font-size: 2rem;
   }
 }
 </style>
@@ -557,12 +583,27 @@ body::before {
         
         <div class="promo-card">
           <div class="promo-header">
-            <div class="promo-badge"><?php echo $promo['PromoCode']; ?></div>
-            <div class="promo-code"><?php echo htmlspecialchars($promo['PromoName']); ?></div>
-            <div class="promo-name"><?php echo htmlspecialchars($promo['Description']); ?></div>
+            <!-- 🔥 รหัสโปรโมชั่นเด่นชัด -->
+            <div class="promo-code-container">
+              <div class="code-label">📋 รหัสโปรโมชั่น</div>
+              <div class="promo-code" onclick="copyCode(this)" title="คลิกเพื่อคัดลอก">
+                <?php echo htmlspecialchars($promo['PromoCode']); ?>
+              </div>
+              <div class="copy-hint">👆 คลิกเพื่อคัดลอกรหัส</div>
+            </div>
+            
+            <div class="promo-name"><?php echo htmlspecialchars($promo['PromoName']); ?></div>
           </div>
           
           <div class="promo-body">
+            <!-- 🔥 แสดงคำอธิบายแทนเงื่อนไข -->
+            <?php if (!empty($promo['Description'])): ?>
+              <div class="promo-description">
+                <span class="description-icon">💬</span>
+                <div><?php echo nl2br(htmlspecialchars($promo['Description'])); ?></div>
+              </div>
+            <?php endif; ?>
+            
             <div class="promo-discount">
               <div class="discount-label">💸 ส่วนลด</div>
               <div class="discount-value">
@@ -595,13 +636,6 @@ body::before {
                 <?php echo $statusText; ?>
               </span>
             </div>
-            
-            <?php if (!empty($promo['Conditions'])): ?>
-              <div class="promo-conditions">
-                <div class="conditions-title">📋 เงื่อนไข</div>
-                <?php echo nl2br(htmlspecialchars($promo['Conditions'])); ?>
-              </div>
-            <?php endif; ?>
           </div>
         </div>
       <?php endwhile; ?>
@@ -619,6 +653,55 @@ body::before {
 <a href="dashboard.php" class="back-button">
   ← กลับหน้าหลัก
 </a>
+
+<script>
+// 🔥 Copy promo code to clipboard
+function copyCode(element) {
+  const code = element.textContent.trim();
+  
+  // Modern copy method
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(() => {
+      showCopyFeedback(element, '✅ คัดลอกแล้ว!');
+    }).catch(() => {
+      fallbackCopy(code, element);
+    });
+  } else {
+    fallbackCopy(code, element);
+  }
+}
+
+// Fallback copy method
+function fallbackCopy(text, element) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  
+  try {
+    document.execCommand('copy');
+    showCopyFeedback(element, '✅ คัดลอกแล้ว!');
+  } catch (err) {
+    showCopyFeedback(element, '❌ ไม่สามารถคัดลอกได้');
+  }
+  
+  document.body.removeChild(textarea);
+}
+
+// Show copy feedback
+function showCopyFeedback(element, message) {
+  const originalText = element.textContent;
+  element.textContent = message;
+  element.style.fontSize = '1.5rem';
+  
+  setTimeout(() => {
+    element.textContent = originalText;
+    element.style.fontSize = '';
+  }, 2000);
+}
+</script>
 
 </body>
 </html>
