@@ -717,9 +717,12 @@ function computeEnd(){
 // ----------------------------------------------------------------
 // ฟังก์ชันตรวจสอบโปรโมชั่น (แก้ไขให้เรียก computeEnd ที่ Global)
 // ----------------------------------------------------------------
+// อัพเดตฟังก์ชัน checkPromotion() ใน booking.php
 function checkPromotion() {
   const code = document.getElementById('promoCode').value.trim();
   const resultEl = document.getElementById('promoResult');
+  const booking_date = document.getElementById('booking_date').value;
+  const start_time = document.getElementById('start_time').value; // เวลาที่เลือก (24hr format)
   
   if (!code) {
     resultEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> กรุณากรอกรหัสโปรโมชั่น';
@@ -730,13 +733,32 @@ function checkPromotion() {
     return;
   }
   
-  fetch('promotion_check.php?code=' + encodeURIComponent(code))
+  // ✅ ส่งข้อมูลวันที่และเวลาไปด้วย
+  const params = new URLSearchParams({
+    code: code,
+    booking_date: booking_date,
+    start_time: start_time
+  });
+  
+  fetch('promotion_check.php?' + params.toString())
     .then(res => res.json())
     .then(data => {
       if (data.valid) {
         currentPromoData = data;
-        resultEl.innerHTML = `<i class="fas fa-check-circle"></i> ใช้ได้: ส่วนลด <strong>${data.discount_text}</strong>`;
+        
+        // แสดงข้อความตามประเภทเงื่อนไข
+        let conditionMsg = '';
+        if (data.condition_type === 'first_booking') {
+          conditionMsg = ' <span style="color:#16a34a;">✓ การจองครั้งแรกของคุณ</span>';
+        } else if (data.condition_type === 'before_18') {
+          conditionMsg = ' <span style="color:#2563eb;">✓ จองก่อน 18:00 น.</span>';
+        } else if (data.condition_type === 'special_discount') {
+          conditionMsg = ' <span style="color:#f59e0b;">★ ส่วนลดพิเศษ</span>';
+        }
+        
+        resultEl.innerHTML = `<i class="fas fa-check-circle"></i> ใช้ได้: ส่วนลด <strong>${data.discount_text}</strong>${conditionMsg}`;
         resultEl.className = 'show success';
+        
         if (data.promotion_id) {
           document.getElementById('promotion_id').value = data.promotion_id;
         }
@@ -753,10 +775,33 @@ function checkPromotion() {
       currentPromoData = null;
       resultEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
       resultEl.className = 'show error';
-      computeEnd(); 
+      computeEnd();
     });
 }
 
+// ✅ เพิ่ม: เมื่อเปลี่ยนเวลา ให้ตรวจสอบโปรโมชั่นใหม่ (ถ้ามีโค้ดอยู่แล้ว)
+function recheckPromoIfNeeded() {
+  const code = document.getElementById('promoCode').value.trim();
+  if (code) {
+    checkPromotion(); // ตรวจสอบใหม่
+  }
+}
+
+// เพิ่ม Event Listeners เมื่อเปลี่ยนเวลา
+document.addEventListener('DOMContentLoaded', function() {
+  const timeSelects = ['hh12', 'mm', 'ampm'];
+  timeSelects.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', recheckPromoIfNeeded);
+    }
+  });
+  
+  const dateEl = document.getElementById('booking_date');
+  if (dateEl) {
+    dateEl.addEventListener('change', recheckPromoIfNeeded);
+  }
+});
 
 // ----------------------------------------------------------------
 // IIFE (สำหรับ Initialization และ Event Handlers)
