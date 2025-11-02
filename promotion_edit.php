@@ -38,7 +38,7 @@ if (isset($_POST['update_promo'])) {
                    SET PromoCode=?, PromoName=?, Description=?, DiscountType=?, DiscountValue=?, Conditions=? 
                    WHERE PromotionID=?";
     $stmt_upd = $conn->prepare($sql_update);
-    $stmt_upd->bind_param("sssdssi", $code, $name, $desc, $type, $value, $conditions, $id);
+    $stmt_upd->bind_param("ssssdsi", $code, $name, $desc, $type, $value, $conditions, $id);
     $stmt_upd->execute();
 
     echo "<script>alert('✅ อัปเดตโปรโมชั่นเรียบร้อยแล้ว'); window.location='promotion_manage.php';</script>";
@@ -477,8 +477,6 @@ select {
             </div>
           </div>
         </div>
-
-        <!-- หมายเหตุ: ไม่มีการแก้ไขวันที่ -->       
 
       </div>
 
