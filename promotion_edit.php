@@ -25,22 +25,20 @@ if ($result->num_rows == 0) {
 }
 $promo = $result->fetch_assoc();
 
-// ✅ เมื่อกดอัปเดต
+// ✅ เมื่อกดอัปเดต (ไม่แก้ไขวันที่)
 if (isset($_POST['update_promo'])) {
     $code = trim($_POST['PromoCode']);
     $name = trim($_POST['PromoName']);
     $desc = trim($_POST['Description']);
     $type = $_POST['DiscountType'];
     $value = floatval($_POST['DiscountValue']);
-    $start = $_POST['StartDate'];
-    $end = $_POST['EndDate'];
     $conditions = trim($_POST['Conditions']);
 
     $sql_update = "UPDATE Tbl_Promotion 
-                   SET PromoCode=?, PromoName=?, Description=?, DiscountType=?, DiscountValue=?, StartDate=?, EndDate=?, Conditions=? 
+                   SET PromoCode=?, PromoName=?, Description=?, DiscountType=?, DiscountValue=?, Conditions=? 
                    WHERE PromotionID=?";
     $stmt_upd = $conn->prepare($sql_update);
-    $stmt_upd->bind_param("ssssdsssi", $code, $name, $desc, $type, $value, $start, $end, $conditions, $id);
+    $stmt_upd->bind_param("sssdssi", $code, $name, $desc, $type, $value, $conditions, $id);
     $stmt_upd->execute();
 
     echo "<script>alert('✅ อัปเดตโปรโมชั่นเรียบร้อยแล้ว'); window.location='promotion_manage.php';</script>";
@@ -291,57 +289,6 @@ select {
   font-size: 1.1rem;
 }
 
-/* Advanced Section - Hidden by default */
-.advanced-section {
-  margin-top: 1.5rem;
-  border-top: 2px dashed var(--gray-200);
-  padding-top: 1.5rem;
-}
-
-.toggle-advanced {
-  background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
-  border: 2px solid var(--gray-300);
-  border-radius: 12px;
-  padding: 1rem 1.25rem;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-weight: 700;
-  color: var(--gray-700);
-  font-size: 1rem;
-}
-
-.toggle-advanced:hover {
-  background: linear-gradient(135deg, var(--gray-200) 0%, var(--gray-300) 100%);
-  border-color: var(--primary);
-  color: var(--primary);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.toggle-icon {
-  transition: transform 0.3s;
-  font-size: 1.25rem;
-}
-
-.toggle-advanced.active .toggle-icon {
-  transform: rotate(180deg);
-}
-
-.advanced-content {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.4s ease-out;
-}
-
-.advanced-content.show {
-  max-height: 500px;
-  margin-top: 1.5rem;
-}
-
 .button-group {
   display: flex;
   gap: 1rem;
@@ -391,6 +338,29 @@ select {
   transform: translateY(-2px);
 }
 
+.info-box {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 2px solid #f59e0b;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 0.5rem;
+}
+
+.info-box-title {
+  font-weight: 700;
+  color: #92400e;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.info-box-content {
+  font-size: 0.9rem;
+  color: #78350f;
+  line-height: 1.6;
+}
+
 @media (max-width: 768px) {
   .form-row {
     grid-template-columns: 1fr;
@@ -411,17 +381,6 @@ select {
   .form-container {
     padding: 2rem 1.5rem;
   }
-}
-
-/* Success Animation */
-@keyframes success {
-  0% { transform: scale(0.8); opacity: 0; }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.success-message {
-  animation: success 0.5s ease-out;
 }
 </style>
 </head>
@@ -499,43 +458,35 @@ select {
           </div>
         </div>
 
-        <!-- Row 3: วันเริ่มต้น และ วันสิ้นสุด -->
-        <div class="form-row">
-          <div class="form-group">
-            <label>
-              <span class="label-icon">📅</span>
-              วันเริ่มต้น
-              <span class="required">*</span>
-            </label>
-            <input type="datetime-local" name="StartDate" value="<?php echo date('Y-m-d\TH:i', strtotime($promo['StartDate'])); ?>" required>
-          </div>
-
-          <div class="form-group">
-            <label>
-              <span class="label-icon">⏰</span>
-              วันสิ้นสุด
-              <span class="required">*</span>
-            </label>
-            <input type="datetime-local" name="EndDate" value="<?php echo date('Y-m-d\TH:i', strtotime($promo['EndDate'])); ?>" required>
+        <!-- เงื่อนไขการใช้งาน -->
+        <div class="form-group full-width">
+          <label>
+            <span class="label-icon">📋</span>
+            เงื่อนไขการใช้งาน
+          </label>
+          <textarea name="Conditions" rows="4" placeholder="ระบุเงื่อนไขการใช้งาน เช่น ใช้ได้เฉพาะวันธรรมดา, จองขั้นต่ำ 2 ชั่วโมง"><?php echo htmlspecialchars($promo['Conditions']); ?></textarea>
+          
+          <div class="info-box">
+            <div class="info-box-title">
+              💡 เงื่อนไขพิเศษที่รองรับ
+            </div>
+            <div class="info-box-content">
+              • <strong>จองครั้งแรกลดเลยทันที</strong> → ใช้ได้เฉพาะครั้งแรก<br>
+              • <strong>จองก่อน 18:00 ลดเลยทันที</strong> → เช็คเวลาเริ่มต้น<br>
+              • <strong>โค้ดส่วนลดพิเศษมาแล้ว</strong> → ใช้ได้ทุกคน<br>
+              • <strong>หรือเว้นว่าง</strong> → ไม่มีเงื่อนไข
+            </div>
           </div>
         </div>
 
-        <!-- Advanced Section (Hidden) -->
-        <div class="advanced-section">
-          <button type="button" class="toggle-advanced" id="toggleAdvanced">
-            <span>⚙️ เงื่อนไขการใช้งาน (ตัวเลือกเพิ่มเติม)</span>
-            <span class="toggle-icon">▼</span>
-          </button>
-          
-          <div class="advanced-content" id="advancedContent">
-            <div class="form-group">
-              <label>
-                <span class="label-icon">📋</span>
-                เงื่อนไขการใช้งาน
-              </label>
-              <textarea name="Conditions" rows="4" placeholder="ระบุเงื่อนไขการใช้งาน เช่น ใช้ได้เฉพาะวันธรรมดา, จองขั้นต่ำ 2 ชั่วโมง"><?php echo htmlspecialchars($promo['Conditions']); ?></textarea>
-              <div class="input-hint">💡 ระบุเงื่อนไขเพิ่มเติมที่ลูกค้าต้องทราบ (ถ้ามี)</div>
-            </div>
+        <!-- หมายเหตุ: ไม่มีการแก้ไขวันที่ -->
+        <div class="info-box">
+          <div class="info-box-title">
+            ⚠️ หมายเหตุสำคัญ
+          </div>
+          <div class="info-box-content">
+            การแก้ไขนี้จะ<strong>ไม่เปลี่ยนวันเริ่มต้น-สิ้นสุด</strong> ของโปรโมชั่น<br>
+            หากต้องการเปลี่ยนสถานะ กรุณาใช้ปุ่ม "เริ่มใช้งาน" หรือ "หยุดใช้งาน" ในหน้าจัดการโปรโมชั่น
           </div>
         </div>
 
@@ -554,15 +505,6 @@ select {
 </div>
 
 <script>
-// Toggle Advanced Section
-document.getElementById('toggleAdvanced').addEventListener('click', function() {
-  const content = document.getElementById('advancedContent');
-  const button = this;
-  
-  button.classList.toggle('active');
-  content.classList.toggle('show');
-});
-
 // Update Discount Preview
 function updatePreview() {
   const type = document.getElementById('discountType').value;
@@ -578,18 +520,6 @@ function updatePreview() {
 
 document.getElementById('discountType').addEventListener('change', updatePreview);
 document.getElementById('discountValue').addEventListener('input', updatePreview);
-
-// Form Validation
-document.getElementById('promoForm').addEventListener('submit', function(e) {
-  const startDate = new Date(document.querySelector('input[name="StartDate"]').value);
-  const endDate = new Date(document.querySelector('input[name="EndDate"]').value);
-  
-  if (endDate <= startDate) {
-    e.preventDefault();
-    alert('⚠️ วันสิ้นสุดต้องมาหลังวันเริ่มต้น');
-    return false;
-  }
-});
 </script>
 
 </body>
