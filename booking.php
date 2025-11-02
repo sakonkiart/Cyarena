@@ -899,7 +899,7 @@ function checkPromotion() {
     }
     if (!startHidden.value) {
       e.preventDefault();
-      startHelp.innerHTML = '<i class="fas fa-exclamation-circle"></i> กรุณาเลือกเวลาเริ่มให้ครบ';
+      startHelp.innerHTML = '<i class="fas fa-exclamation-circle"></i> กรุณาเลือกเวลาเริ่มใหม่';
       startHelp.classList.add('error');
     }
   });
