@@ -13,7 +13,6 @@ $maxSize = 2 * 1024 * 1024; // 2MB
 $avatarDir = __DIR__ . '/uploads/avatars/';
 $avatarUrlBase = 'uploads/avatars/';
 
-// สร้างโฟลเดอร์หากไม่มี
 if (!is_dir($avatarDir)) {
   @mkdir($avatarDir, 0777, true);
 }
@@ -41,7 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
     $errors[] = 'ไม่สามารถยืนยันคำขอได้ (CSRF)';
   } else {
-    // รับค่า
     $first = trim($_POST['first_name'] ?? '');
     $last  = trim($_POST['last_name'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
@@ -51,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newPassword = $_POST['new_password'] ?? '';
     $confirmPassword = $_POST['confirm_password'] ?? '';
 
-    // Validation พื้นฐาน
+    // Validation
     if ($first === '') $errors[] = 'กรุณากรอกชื่อ';
     if ($last  === '') $errors[] = 'กรุณากรอกนามสกุล';
     if ($phone !== '' && !preg_match('/^[0-9+\-\s]{6,20}$/', $phone)) {
@@ -64,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $errors[] = 'กรุณากรอก Username';
     }
 
-    // ตรวจสอบ Username ซ้ำ (ถ้าเปลี่ยน)
+    // ตรวจสอบ Username ซ้ำ
     if ($username !== $profile['Username']) {
       $checkUser = $conn->prepare("SELECT CustomerID FROM Tbl_Customer WHERE Username = ? AND CustomerID != ?");
       $checkUser->bind_param('si', $username, $uid);
@@ -75,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $checkUser->close();
     }
 
-    // ตรวจสอบ Email ซ้ำ (ถ้าเปลี่ยน)
+    // ตรวจสอบ Email ซ้ำ
     if ($email !== $profile['Email']) {
       $checkEmail = $conn->prepare("SELECT CustomerID FROM Tbl_Customer WHERE Email = ? AND CustomerID != ?");
       $checkEmail->bind_param('si', $email, $uid);
@@ -89,11 +87,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ตรวจสอบการเปลี่ยนรหัสผ่าน
     $updatePassword = false;
     if (!empty($newPassword)) {
-      // ต้องกรอกรหัสผ่านเดิม
       if (empty($currentPassword)) {
         $errors[] = 'กรุณากรอกรหัสผ่านเดิมเพื่อยืนยัน';
       } else {
-        // ตรวจสอบรหัสผ่านเดิม
         $sqlPass = "SELECT Password FROM Tbl_Customer WHERE CustomerID = ?";
         $stmtPass = $conn->prepare($sqlPass);
         $stmtPass->bind_param('i', $uid);
@@ -104,7 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!password_verify($currentPassword, $resultPass['Password'])) {
           $errors[] = 'รหัสผ่านเดิมไม่ถูกต้อง';
         } else {
-          // ตรวจสอบรหัสผ่านใหม่
           if (strlen($newPassword) < 6) {
             $errors[] = 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร';
           } elseif ($newPassword !== $confirmPassword) {
@@ -116,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
     }
 
-    // จัดการอัปโหลดรูป (ถ้ามี)
+    // จัดการอัปโหลดรูป
     $newAvatarRel = null;
     if (!empty($_FILES['avatar']['name'])) {
       $f = $_FILES['avatar'];
@@ -136,7 +131,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $errors[] = 'อัปโหลดรูปไม่สำเร็จ';
             } else {
               $newAvatarRel = $avatarUrlBase . $newName;
-              // ลบไฟล์เก่า
               if (!empty($profile['AvatarPath'])) {
                 $old = $profile['AvatarPath'];
                 $oldAbs = __DIR__ . '/' . ltrim($old, '/');
@@ -154,7 +148,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // บันทึก
     if (!$errors) {
-      // สร้าง SQL แบบไดนามิก
       $fields = ['FirstName=?', 'LastName=?', 'Phone=?', 'Email=?', 'Username=?'];
       $params = [$first, $last, $phone, $email, $username];
       $types = 'sssss';
@@ -187,7 +180,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $profile['Username']   = $username;
         if ($newAvatarRel) $profile['AvatarPath'] = $newAvatarRel;
 
-        // อัปเดต Session
         $_SESSION['user_name'] = trim($first . ' ' . $last);
         if ($newAvatarRel) $_SESSION['avatar_path'] = $newAvatarRel;
       } else {
@@ -227,26 +219,32 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     font-family:"Prompt", system-ui, sans-serif;
     background-repeat: no-repeat;
     background-attachment: fixed;
+    min-height: 100vh;
   }
 
   .container-sm{max-width:800px}
-  label{font-weight:600}
-  .help{color:#64748b;font-size:.9rem}
-  .avatar-wrap{display:flex;gap:18px;align-items:center}
+  label{font-weight:600;margin-bottom:0.5rem}
+  .help{color:#64748b;font-size:.9rem;margin-top:0.5rem}
+  
+  .avatar-wrap{display:flex;gap:18px;align-items:center;margin-bottom:1.5rem}
   .avatar-wrap img{
     width:88px;height:88px;border-radius:50%;
     object-fit:cover;border:3px solid #3b82f6;background:#fff;
     box-shadow:0 6px 16px rgba(2,6,23,.12);
   }
+  
   .btn-brand{
-    background:#2563eb;color:#fff;font-weight:700
+    background:#2563eb;color:#fff;font-weight:700;
+    padding:0.75rem 1.5rem;border:none;border-radius:0.5rem;
   }
-  .btn-brand:hover{background:#1d4ed8;color:#fff}
+  .btn-brand:hover{background:#1d4ed8;color:#fff;transform:translateY(-1px)}
 
   .btn-back{
     color:#fff!important;font-weight:600;border:none;
     background:linear-gradient(135deg, var(--brand-1), var(--brand-3));
     box-shadow:0 6px 16px rgba(13,110,253,.25);
+    padding:0.625rem 1.25rem;border-radius:0.5rem;
+    display:inline-block;text-decoration:none;
   }
   .btn-back:hover{
     filter:brightness(.95);
@@ -261,10 +259,6 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
       linear-gradient(#ffffff,#ffffff) padding-box,
       linear-gradient(135deg, var(--brand-1), var(--brand-2), var(--brand-3)) border-box;
     box-shadow: 0 10px 28px rgba(13,110,253,0.12), 0 0 16px rgba(13,110,253,0.18);
-    transition: box-shadow .3s ease;
-  }
-  .card-beauty:hover{
-    box-shadow: 0 14px 38px rgba(13,110,253,0.18), 0 0 22px rgba(13,110,253,0.28);
   }
 
   .logo-wrap{
@@ -275,41 +269,12 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
 
   .card-logo-img{
     width:100%; height:auto; display:block;
-    transform-origin:center;
-    animation:
-      bob 4.2s ease-in-out infinite,
-      glow 3s ease-in-out infinite alternate;
-  }
-
-  .logo-wrap::after{
-    content:"";
-    position:absolute; inset:0;
-    background: linear-gradient(120deg, transparent 0%,
-               rgba(255,255,255,.65) 48%, transparent 52%);
-    transform: translateX(-160%);
-    mix-blend-mode: screen; opacity:.6;
-    animation: shine 3.8s linear infinite;
-    border-radius: 8px;
-  }
-
-  @media (hover:hover){
-    .logo-wrap:hover .card-logo-img{
-      animation-play-state: paused;
-      transform: scale(1.04) rotate(-1deg);
-    }
+    animation: bob 4.2s ease-in-out infinite;
   }
 
   @keyframes bob{
     0%,100%{ transform: translateY(0); }
     50%    { transform: translateY(-4px); }
-  }
-  @keyframes glow{
-    from { filter: drop-shadow(0 0 6px rgba(13,110,253,.35)); }
-    to   { filter: drop-shadow(0 0 14px rgba(13,110,253,.65)); }
-  }
-  @keyframes shine{
-    0%   { transform: translateX(-160%) rotate(0.001deg); }
-    100% { transform: translateX(160%)  rotate(0.001deg); }
   }
 
   @media (max-width: 576px){
@@ -329,31 +294,6 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     box-shadow: inset 0 0 10px rgba(16,185,129,.08);
   }
 
-  /* Input Group with Toggle */
-  .input-toggle-group {
-    position: relative;
-  }
-  .input-toggle-group input {
-    padding-right: 45px;
-  }
-  .toggle-visibility {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: #6b7280;
-    cursor: pointer;
-    padding: 5px;
-    font-size: 1.2rem;
-    transition: color 0.2s;
-  }
-  .toggle-visibility:hover {
-    color: var(--brand-1);
-  }
-
-  /* Section Divider */
   .section-divider {
     border-top: 2px solid #e5e7eb;
     margin: 2rem 0 1.5rem 0;
@@ -369,22 +309,26 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     gap: 8px;
   }
 
-  /* Password Strength Indicator */
   .password-strength {
     height: 4px;
     background: #e5e7eb;
     border-radius: 2px;
     margin-top: 8px;
-    overflow: hidden;
   }
   .password-strength-bar {
     height: 100%;
     width: 0%;
     transition: all 0.3s;
+    border-radius: 2px;
   }
   .strength-weak { background: #ef4444; width: 33%; }
   .strength-medium { background: #f59e0b; width: 66%; }
   .strength-strong { background: #10b981; width: 100%; }
+
+  .form-control:focus {
+    border-color: var(--brand-1);
+    box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.15);
+  }
 </style>
 </head>
 <body class="py-4">
@@ -398,7 +342,7 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
         <img src="images/cy.png" alt="CY Arena" class="card-logo-img">
       </div>
 
-      <h3 class="mb-3 text-primary fw-semibold">แก้ไขโปรไฟล์</h3>
+      <h3 class="mb-4 text-primary fw-semibold">แก้ไขโปรไฟล์</h3>
 
       <?php if ($errors): ?>
         <div class="alert border-0 rounded-3 shadow-sm alert-soft-danger mb-3">
@@ -428,9 +372,9 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
           <label class="form-label">รูปโปรไฟล์</label>
           <div class="avatar-wrap">
             <img id="avatarPreview" src="<?= $avatarSrc ?>" alt="avatar">
-            <div>
+            <div class="flex-grow-1">
               <input class="form-control" type="file" name="avatar" id="avatar" accept=".jpg,.jpeg,.png,.webp">
-              <div class="help mt-2">รองรับ JPG/PNG/WebP ขนาดไม่เกิน 2MB</div>
+              <div class="help">รองรับ JPG/PNG/WebP ขนาดไม่เกิน 2MB</div>
             </div>
           </div>
         </div>
@@ -440,14 +384,14 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
           <i class="bi bi-person-circle"></i> ข้อมูลส่วนตัว
         </div>
 
-        <div class="row g-3">
+        <div class="row g-3 mb-4">
           <div class="col-md-6">
-            <label class="form-label">ชื่อ</label>
+            <label class="form-label">ชื่อ <span class="text-danger">*</span></label>
             <input type="text" name="first_name" class="form-control" required
                    value="<?= htmlspecialchars($profile['FirstName'] ?? '') ?>">
           </div>
           <div class="col-md-6">
-            <label class="form-label">นามสกุล</label>
+            <label class="form-label">นามสกุล <span class="text-danger">*</span></label>
             <input type="text" name="last_name" class="form-control" required
                    value="<?= htmlspecialchars($profile['LastName'] ?? '') ?>">
           </div>
@@ -460,42 +404,24 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
           </div>
         </div>
 
-        <div class="row g-3">
+        <div class="row g-3 mb-4">
           <div class="col-md-6">
-            <label class="form-label">Username</label>
-            <div class="input-toggle-group">
-              <input type="text" name="username" id="username" class="form-control" required
-                     value="<?= htmlspecialchars($profile['Username'] ?? '') ?>"
-                     data-original-value="<?= htmlspecialchars($profile['Username'] ?? '') ?>">
-              <button type="button" class="toggle-visibility" data-target="username">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
+            <label class="form-label">Username <span class="text-danger">*</span></label>
+            <input type="text" name="username" class="form-control" required
+                   value="<?= htmlspecialchars($profile['Username'] ?? '') ?>">
           </div>
 
           <div class="col-md-6">
-            <label class="form-label">อีเมล</label>
-            <div class="input-toggle-group">
-              <input type="email" name="email" id="email" class="form-control" required
-                     value="<?= htmlspecialchars($profile['Email'] ?? '') ?>"
-                     data-original-value="<?= htmlspecialchars($profile['Email'] ?? '') ?>">
-              <button type="button" class="toggle-visibility" data-target="email">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
+            <label class="form-label">อีเมล <span class="text-danger">*</span></label>
+            <input type="email" name="email" class="form-control" required
+                   value="<?= htmlspecialchars($profile['Email'] ?? '') ?>">
           </div>
 
           <div class="col-md-6">
             <label class="form-label">เบอร์โทร</label>
-            <div class="input-toggle-group">
-              <input type="text" name="phone" id="phone" class="form-control"
-                     placeholder="08x-xxx-xxxx"
-                     value="<?= htmlspecialchars($profile['Phone'] ?? '') ?>"
-                     data-original-value="<?= htmlspecialchars($profile['Phone'] ?? '') ?>">
-              <button type="button" class="toggle-visibility" data-target="phone">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
+            <input type="text" name="phone" class="form-control"
+                   placeholder="08x-xxx-xxxx"
+                   value="<?= htmlspecialchars($profile['Phone'] ?? '') ?>">
           </div>
         </div>
 
@@ -507,27 +433,17 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
           <div class="help mb-3">หากไม่ต้องการเปลี่ยนรหัสผ่าน ให้เว้นว่างไว้</div>
         </div>
 
-        <div class="row g-3">
+        <div class="row g-3 mb-4">
           <div class="col-md-12">
             <label class="form-label">รหัสผ่านเดิม</label>
-            <div class="input-toggle-group">
-              <input type="password" name="current_password" id="current_password" class="form-control"
-                     placeholder="กรอกรหัสผ่านเดิมเพื่อยืนยัน">
-              <button type="button" class="toggle-visibility" data-target="current_password">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
+            <input type="password" name="current_password" id="current_password" class="form-control"
+                   placeholder="กรอกรหัสผ่านเดิมเพื่อยืนยัน">
           </div>
 
           <div class="col-md-6">
             <label class="form-label">รหัสผ่านใหม่</label>
-            <div class="input-toggle-group">
-              <input type="password" name="new_password" id="new_password" class="form-control"
-                     placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6">
-              <button type="button" class="toggle-visibility" data-target="new_password">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
+            <input type="password" name="new_password" id="new_password" class="form-control"
+                   placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6">
             <div class="password-strength">
               <div class="password-strength-bar" id="strengthBar"></div>
             </div>
@@ -535,17 +451,12 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
 
           <div class="col-md-6">
             <label class="form-label">ยืนยันรหัสผ่านใหม่</label>
-            <div class="input-toggle-group">
-              <input type="password" name="confirm_password" id="confirm_password" class="form-control"
-                     placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
-              <button type="button" class="toggle-visibility" data-target="confirm_password">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
+            <input type="password" name="confirm_password" id="confirm_password" class="form-control"
+                   placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
           </div>
         </div>
 
-        <div class="d-flex gap-2 mt-4">
+        <div class="d-flex gap-2">
           <button class="btn btn-brand" type="submit">
             <i class="bi bi-check-circle me-1"></i> บันทึกโปรไฟล์
           </button>
@@ -560,90 +471,18 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     const f = e.target.files && e.target.files[0];
     if (!f) return;
     const ok = ['image/jpeg','image/png','image/webp'].includes(f.type);
-    if (!ok) { alert('รองรับ JPG/PNG/WebP เท่านั้น'); e.target.value=''; return; }
-    if (f.size > <?= (int)$maxSize ?>) { alert('ไฟล์ใหญ่เกิน 2MB'); e.target.value=''; return; }
+    if (!ok) { 
+      alert('รองรับ JPG/PNG/WebP เท่านั้น'); 
+      e.target.value=''; 
+      return; 
+    }
+    if (f.size > <?= (int)$maxSize ?>) { 
+      alert('ไฟล์ใหญ่เกิน 2MB'); 
+      e.target.value=''; 
+      return; 
+    }
     const url = URL.createObjectURL(f);
     document.getElementById('avatarPreview').src = url;
-  });
-
-  // ฟังก์ชันซ่อน/แสดงข้อมูล
-  function maskText(text, type = 'default') {
-    if (!text) return '';
-    if (type === 'email') {
-      const [local, domain] = text.split('@');
-      if (!domain) return '•'.repeat(text.length);
-      return local.charAt(0) + '•'.repeat(local.length - 1) + '@' + domain;
-    } else if (type === 'phone') {
-      return text.slice(0, 3) + '•'.repeat(text.length - 3);
-    } else {
-      return '•'.repeat(text.length);
-    }
-  }
-
-  // Toggle visibility for text fields (username, email, phone)
-  const textFieldToggles = document.querySelectorAll('.toggle-visibility[data-target="username"], .toggle-visibility[data-target="email"], .toggle-visibility[data-target="phone"]');
-  
-  textFieldToggles.forEach(btn => {
-    const targetId = btn.getAttribute('data-target');
-    const input = document.getElementById(targetId);
-    const icon = btn.querySelector('i');
-    let isHidden = false;
-    
-    // เก็บค่าเริ่มต้น
-    let originalValue = input.getAttribute('data-original-value');
-    
-    // ซ่อนข้อมูลเมื่อโหลดหน้าครั้งแรก
-    if (originalValue) {
-      let maskType = 'default';
-      if (targetId === 'email') maskType = 'email';
-      else if (targetId === 'phone') maskType = 'phone';
-      
-      input.value = maskText(originalValue, maskType);
-      isHidden = true;
-      icon.className = 'bi bi-eye-slash';
-    }
-    
-    // คลิกปุ่มตา
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      
-      if (isHidden) {
-        // แสดงข้อมูลจริง
-        input.value = originalValue || '';
-        icon.className = 'bi bi-eye';
-        isHidden = false;
-      } else {
-        // อัปเดตค่าปัจจุบันก่อนซ่อน
-        originalValue = input.value;
-        input.setAttribute('data-original-value', originalValue);
-        
-        // ซ่อนข้อมูล
-        let maskType = 'default';
-        if (targetId === 'email') maskType = 'email';
-        else if (targetId === 'phone') maskType = 'phone';
-        
-        input.value = maskText(originalValue, maskType);
-        icon.className = 'bi bi-eye-slash';
-        isHidden = true;
-      }
-    });
-    
-    // เมื่อ focus ให้แสดงข้อมูลจริงเสมอ
-    input.addEventListener('focus', function() {
-      if (isHidden) {
-        input.value = originalValue || '';
-        icon.className = 'bi bi-eye';
-        isHidden = false;
-      }
-    });
-    
-    // เมื่อมีการแก้ไข ให้อัปเดต original value
-    input.addEventListener('input', function() {
-      originalValue = input.value;
-      input.setAttribute('data-original-value', input.value);
-      isHidden = false;
-      icon.className = 'bi bi-eye';
-    });
   });
 
   // Password Strength Indicator
@@ -659,21 +498,12 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     }
 
     let strength = 0;
-    
-    // ความยาว
     if (password.length >= 6) strength++;
     if (password.length >= 10) strength++;
-    
-    // มีตัวพิมพ์เล็กและใหญ่
     if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
-    
-    // มีตัวเลข
     if (/\d/.test(password)) strength++;
-    
-    // มีอักขระพิเศษ
     if (/[^A-Za-z0-9]/.test(password)) strength++;
 
-    // แสดงความแข็งแรง
     strengthBar.className = 'password-strength-bar';
     if (strength <= 2) {
       strengthBar.classList.add('strength-weak');
@@ -684,53 +514,25 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     }
   });
 
-  // ตรวจสอบรหัสผ่านตรงกันหรือไม่
+  // ตรวจสอบรหัสผ่านตรงกัน
   const confirmPasswordInput = document.getElementById('confirm_password');
   
-  confirmPasswordInput.addEventListener('input', function() {
-    if (this.value && this.value !== newPasswordInput.value) {
-      this.setCustomValidity('รหัสผ่านไม่ตรงกัน');
-      this.classList.add('is-invalid');
-    } else {
-      this.setCustomValidity('');
-      this.classList.remove('is-invalid');
-    }
-  });
-
-  newPasswordInput.addEventListener('input', function() {
-    if (confirmPasswordInput.value && confirmPasswordInput.value !== this.value) {
+  function checkPasswordMatch() {
+    if (confirmPasswordInput.value && confirmPasswordInput.value !== newPasswordInput.value) {
       confirmPasswordInput.setCustomValidity('รหัสผ่านไม่ตรงกัน');
-      confirmPasswordInput.classList.add('is-invalid');
     } else {
       confirmPasswordInput.setCustomValidity('');
-      confirmPasswordInput.classList.remove('is-invalid');
     }
-  });
+  }
 
-  // Toggle password visibility (แยกต่างหากจาก text fields)
-  const passwordToggles = document.querySelectorAll('.toggle-visibility[data-target="current_password"], .toggle-visibility[data-target="new_password"], .toggle-visibility[data-target="confirm_password"]');
-  
-  passwordToggles.forEach(btn => {
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      const targetId = this.getAttribute('data-target');
-      const input = document.getElementById(targetId);
-      const icon = this.querySelector('i');
-      
-      if (input.type === 'password') {
-        input.type = 'text';
-        icon.className = 'bi bi-eye-slash';
-      } else {
-        input.type = 'password';
-        icon.className = 'bi bi-eye';
-      }
-    });
-  });
+  confirmPasswordInput.addEventListener('input', checkPasswordMatch);
+  newPasswordInput.addEventListener('input', checkPasswordMatch);
 
-  // ป้องกันการส่งฟอร์มถ้ารหัสผ่านใหม่กับยืนยันรหัสผ่านไม่ตรงกัน
+  // ป้องกันการส่งฟอร์ม
   document.querySelector('form').addEventListener('submit', function(e) {
     const newPass = newPasswordInput.value;
     const confirmPass = confirmPasswordInput.value;
+    const currentPass = document.getElementById('current_password').value;
     
     if (newPass && newPass !== confirmPass) {
       e.preventDefault();
@@ -739,8 +541,6 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
       return false;
     }
     
-    // ถ้ามีการเปลี่ยนรหัสผ่าน ต้องกรอกรหัสผ่านเดิม
-    const currentPass = document.getElementById('current_password').value;
     if (newPass && !currentPass) {
       e.preventDefault();
       alert('กรุณากรอกรหัสผ่านเดิมเพื่อยืนยันการเปลี่ยนรหัสผ่าน');
@@ -748,3 +548,7 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
       return false;
     }
   });
+</script>
+
+</body>
+</html>
