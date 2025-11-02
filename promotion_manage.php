@@ -551,24 +551,6 @@ tbody td {
           <textarea name="Description" rows="3" placeholder="อธิบายรายละเอียดโปรโมชั่นให้ลูกค้าเข้าใจง่าย" required></textarea>
         </div>
 
-        <div class="form-group">
-          <label>
-            <i class="fas fa-calendar-alt"></i>
-            วันเริ่มต้น
-            <span class="required">*</span>
-          </label>
-          <input type="datetime-local" name="StartDate" required>
-        </div>
-
-        <div class="form-group">
-          <label>
-            <i class="fas fa-calendar-check"></i>
-            วันสิ้นสุด
-            <span class="required">*</span>
-          </label>
-          <input type="datetime-local" name="EndDate" required>
-        </div>
-
         <div class="form-group full-width">
           <label>
             <i class="fas fa-info-circle"></i>
