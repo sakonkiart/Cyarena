@@ -568,7 +568,7 @@ body::before {
         
         if ($now >= $start && $now <= $end) {
           $status = 'active';
-          $statusText = '✅ ใช้งานได้';
+          $statusText = '✅ พร้อมใช้งาน';
           $statusClass = 'status-active';
         } elseif ($now < $start) {
           $status = 'upcoming';
