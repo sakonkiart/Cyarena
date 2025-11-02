@@ -1,5 +1,4 @@
 <?php
-// บันทึกเป็น UTF-8 (no BOM) และอย่าใส่ช่องว่างก่อน/หลังแท็ก PHP
 session_start();
 require_once __DIR__ . '/db_connect.php';
 
@@ -17,6 +16,20 @@ $DiscountValue = $_POST['DiscountValue']      ?? '';
 $StartDate     = trim($_POST['StartDate']     ?? '');
 $EndDate       = trim($_POST['EndDate']       ?? '');
 $Conditions    = trim($_POST['Conditions']    ?? '');
+
+// ✅ ตรวจจับประเภทเงื่อนไข
+$ConditionType = 'general'; // ค่าเริ่มต้น
+
+if (stripos($Conditions, 'จองครั้งแรกลดเลยทันที') !== false || 
+    stripos($Conditions, 'จองครั้งแรก') !== false) {
+    $ConditionType = 'first_booking';
+} elseif (stripos($Conditions, 'จองก่อน 18:00') !== false || 
+          stripos($Conditions, 'จองก่อน18:00') !== false) {
+    $ConditionType = 'before_18';
+} elseif (stripos($Conditions, 'โค้ดส่วนลดพิเศษ') !== false || 
+          stripos($Conditions, 'ส่วนลดพิเศษ') !== false) {
+    $ConditionType = 'special_discount';
+}
 
 // ตรวจสอบง่ายๆ
 $errors = [];
@@ -38,10 +51,11 @@ if ($errors) {
     exit;
 }
 
-// ใช้ backtick รอบชื่อคอลัมน์ โดยเฉพาะ `Conditions`
+// ✅ เพิ่ม ConditionType ในการบันทึก
 $sql = "INSERT INTO `Tbl_Promotion`
-        (`PromoCode`, `PromoName`, `Description`, `DiscountType`, `DiscountValue`, `StartDate`, `EndDate`, `Conditions`)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        (`PromoCode`, `PromoName`, `Description`, `DiscountType`, `DiscountValue`, 
+         `StartDate`, `EndDate`, `Conditions`, `ConditionType`)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 $stmt = $conn->prepare($sql);
 if (!$stmt) {
@@ -50,15 +64,14 @@ if (!$stmt) {
     exit;
 }
 
-// d = double/float, s = string
 $stmt->bind_param(
-    'ssssdsss',
+    'ssssdssss',
     $PromoCode, $PromoName, $Description, $DiscountType,
-    $DiscountValue, $StartDate, $EndDate, $Conditions
+    $DiscountValue, $StartDate, $EndDate, $Conditions, $ConditionType
 );
 
 if ($stmt->execute()) {
-    $_SESSION['success_message'] = 'บันทึกโปรโมชันเรียบร้อยแล้ว';
+    $_SESSION['success_message'] = 'บันทึกโปรโมชันเรียบร้อยแล้ว (ประเภท: ' . $ConditionType . ')';
 } else {
     $_SESSION['error_message'] = 'บันทึกล้มเหลว: ' . $stmt->error;
 }
