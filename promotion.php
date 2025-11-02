@@ -618,18 +618,7 @@ body::before {
                 ?>
               </div>
             </div>
-            
-            <div class="promo-dates">
-              <div class="date-item">
-                <span class="date-icon">📅</span>
-                <?php echo date("d/m/Y", strtotime($promo['StartDate'])); ?>
-              </div>
-              <span style="color: var(--gray-400);">→</span>
-              <div class="date-item">
-                <span class="date-icon">⏰</span>
-                <?php echo date("d/m/Y", strtotime($promo['EndDate'])); ?>
-              </div>
-            </div>
+                
             
             <div style="text-align: center;">
               <span class="promo-status <?php echo $statusClass; ?>">
