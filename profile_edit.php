@@ -329,6 +329,31 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     border-color: var(--brand-1);
     box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.15);
   }
+
+  /* Password Toggle Button */
+  .password-toggle-wrapper {
+    position: relative;
+  }
+  .password-toggle-wrapper input {
+    padding-right: 45px;
+  }
+  .password-toggle-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 5px 10px;
+    font-size: 1.1rem;
+    transition: color 0.2s;
+    z-index: 10;
+  }
+  .password-toggle-btn:hover {
+    color: var(--brand-1);
+  }
 </style>
 </head>
 <body class="py-4">
@@ -436,14 +461,25 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
         <div class="row g-3 mb-4">
           <div class="col-md-12">
             <label class="form-label">รหัสผ่านเดิม</label>
-            <input type="password" name="current_password" id="current_password" class="form-control"
-                   placeholder="กรอกรหัสผ่านเดิมเพื่อยืนยัน">
+            <div class="password-toggle-wrapper">
+              <input type="password" name="current_password" id="current_password" class="form-control"
+                     placeholder="กรอกรหัสผ่านเดิมเพื่อยืนยัน">
+              <button type="button" class="password-toggle-btn" data-target="current_password">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="help">กดปุ่มตาเพื่อแสดง/ซ่อนรหัสผ่านที่กำลังพิมพ์</div>
           </div>
 
           <div class="col-md-6">
             <label class="form-label">รหัสผ่านใหม่</label>
-            <input type="password" name="new_password" id="new_password" class="form-control"
-                   placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6">
+            <div class="password-toggle-wrapper">
+              <input type="password" name="new_password" id="new_password" class="form-control"
+                     placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6">
+              <button type="button" class="password-toggle-btn" data-target="new_password">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
             <div class="password-strength">
               <div class="password-strength-bar" id="strengthBar"></div>
             </div>
@@ -451,8 +487,13 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
 
           <div class="col-md-6">
             <label class="form-label">ยืนยันรหัสผ่านใหม่</label>
-            <input type="password" name="confirm_password" id="confirm_password" class="form-control"
-                   placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
+            <div class="password-toggle-wrapper">
+              <input type="password" name="confirm_password" id="confirm_password" class="form-control"
+                     placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
+              <button type="button" class="password-toggle-btn" data-target="confirm_password">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -527,6 +568,23 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
 
   confirmPasswordInput.addEventListener('input', checkPasswordMatch);
   newPasswordInput.addEventListener('input', checkPasswordMatch);
+
+  // Toggle Password Visibility
+  document.querySelectorAll('.password-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const targetId = this.getAttribute('data-target');
+      const input = document.getElementById(targetId);
+      const icon = this.querySelector('i');
+      
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'bi bi-eye-slash';
+      } else {
+        input.type = 'password';
+        icon.className = 'bi bi-eye';
+      }
+    });
+  });
 
   // ป้องกันการส่งฟอร์ม
   document.querySelector('form').addEventListener('submit', function(e) {
