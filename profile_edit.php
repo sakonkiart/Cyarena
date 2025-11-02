@@ -455,14 +455,12 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
           <div class="section-title">
             <i class="bi bi-key"></i> เปลี่ยนรหัสผ่าน
           </div>
-          <button type="button" class="btn btn-outline-primary mb-3" id="togglePasswordChange">
-            <i class="bi bi-unlock me-2"></i> คลิกเพื่อเปลี่ยนรหัสผ่าน
-          </button>
+          <div class="help mb-3">หากไม่ต้องการเปลี่ยนรหัสผ่าน ให้เว้นว่างไว้</div>
         </div>
 
-        <div class="row g-3 mb-4" id="passwordChangeSection" style="display: none;">
+        <div class="row g-3 mb-4">
           <div class="col-md-12">
-            <label class="form-label">รหัสผ่านเดิม <span class="text-danger">*</span></label>
+            <label class="form-label">รหัสผ่านเดิม</label>
             <div class="password-toggle-wrapper">
               <input type="password" name="current_password" id="current_password" class="form-control"
                      placeholder="กรอกรหัสผ่านเดิมเพื่อยืนยัน">
@@ -474,7 +472,7 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
           </div>
 
           <div class="col-md-6">
-            <label class="form-label">รหัสผ่านใหม่ <span class="text-danger">*</span></label>
+            <label class="form-label">รหัสผ่านใหม่</label>
             <div class="password-toggle-wrapper">
               <input type="password" name="new_password" id="new_password" class="form-control"
                      placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6">
@@ -488,7 +486,7 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
           </div>
 
           <div class="col-md-6">
-            <label class="form-label">ยืนยันรหัสผ่านใหม่ <span class="text-danger">*</span></label>
+            <label class="form-label">ยืนยันรหัสผ่านใหม่</label>
             <div class="password-toggle-wrapper">
               <input type="password" name="confirm_password" id="confirm_password" class="form-control"
                      placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
@@ -496,12 +494,6 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
                 <i class="bi bi-eye"></i>
               </button>
             </div>
-          </div>
-
-          <div class="col-12">
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="cancelPasswordChange">
-              <i class="bi bi-x-circle me-1"></i> ยกเลิกการเปลี่ยนรหัสผ่าน
-            </button>
           </div>
         </div>
 
