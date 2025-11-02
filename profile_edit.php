@@ -580,15 +580,19 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     }
   }
 
-  // Toggle visibility for all fields
-  document.querySelectorAll('.toggle-visibility').forEach(btn => {
+  // Toggle visibility for text fields (username, email, phone)
+  const textFieldToggles = document.querySelectorAll('.toggle-visibility[data-target="username"], .toggle-visibility[data-target="email"], .toggle-visibility[data-target="phone"]');
+  
+  textFieldToggles.forEach(btn => {
     const targetId = btn.getAttribute('data-target');
     const input = document.getElementById(targetId);
     const icon = btn.querySelector('i');
     let isHidden = false;
     
+    // เก็บค่าเริ่มต้น
+    let originalValue = input.getAttribute('data-original-value');
+    
     // ซ่อนข้อมูลเมื่อโหลดหน้าครั้งแรก
-    const originalValue = input.getAttribute('data-original-value');
     if (originalValue) {
       let maskType = 'default';
       if (targetId === 'email') maskType = 'email';
@@ -599,13 +603,20 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
       icon.className = 'bi bi-eye-slash';
     }
     
-    btn.addEventListener('click', function() {
+    // คลิกปุ่มตา
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      
       if (isHidden) {
         // แสดงข้อมูลจริง
-        input.value = originalValue;
+        input.value = originalValue || '';
         icon.className = 'bi bi-eye';
         isHidden = false;
       } else {
+        // อัปเดตค่าปัจจุบันก่อนซ่อน
+        originalValue = input.value;
+        input.setAttribute('data-original-value', originalValue);
+        
         // ซ่อนข้อมูล
         let maskType = 'default';
         if (targetId === 'email') maskType = 'email';
@@ -620,7 +631,7 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     // เมื่อ focus ให้แสดงข้อมูลจริงเสมอ
     input.addEventListener('focus', function() {
       if (isHidden) {
-        input.value = originalValue;
+        input.value = originalValue || '';
         icon.className = 'bi bi-eye';
         isHidden = false;
       }
@@ -628,8 +639,10 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     
     // เมื่อมีการแก้ไข ให้อัปเดต original value
     input.addEventListener('input', function() {
-      input.setAttribute('data-original-value', input.value);
       originalValue = input.value;
+      input.setAttribute('data-original-value', input.value);
+      isHidden = false;
+      icon.className = 'bi bi-eye';
     });
   });
 
@@ -694,9 +707,12 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
     }
   });
 
-  // Toggle password visibility
-  document.querySelectorAll('.toggle-visibility[data-target^="password"], .toggle-visibility[data-target^="current_password"], .toggle-visibility[data-target="new_password"], .toggle-visibility[data-target="confirm_password"]').forEach(btn => {
-    btn.addEventListener('click', function() {
+  // Toggle password visibility (แยกต่างหากจาก text fields)
+  const passwordToggles = document.querySelectorAll('.toggle-visibility[data-target="current_password"], .toggle-visibility[data-target="new_password"], .toggle-visibility[data-target="confirm_password"]');
+  
+  passwordToggles.forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
       const targetId = this.getAttribute('data-target');
       const input = document.getElementById(targetId);
       const icon = this.querySelector('i');
