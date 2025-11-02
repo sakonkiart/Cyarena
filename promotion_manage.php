@@ -84,7 +84,7 @@ $result = $conn->query($sql);
 
 body {
   font-family: 'Kanit', sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #2528E7FF 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
   padding: 40px 20px;
   color: var(--gray-900);
@@ -128,56 +128,6 @@ body {
   color: rgba(255, 255, 255, 0.9);
   font-size: 1.1rem;
   font-weight: 500;
-}
-
-/* Admin Guide Box */
-.admin-guide {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.9));
-  border-radius: 20px;
-  padding: 30px;
-  margin-bottom: 40px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  border: 3px solid rgba(255, 255, 255, 0.5);
-}
-
-.guide-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--primary);
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.guide-content {
-  display: grid;
-  gap: 15px;
-}
-
-.guide-item {
-  background: white;
-  padding: 15px 20px;
-  border-radius: 12px;
-  border-left: 5px solid var(--primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.guide-item strong {
-  color: var(--primary);
-  font-size: 1.05rem;
-}
-
-.guide-item p {
-  color: var(--gray-700);
-  margin-top: 5px;
-  line-height: 1.6;
-}
-
-.guide-highlight {
-  background: linear-gradient(135deg, #fef3c7, #fde68a);
-  border-left-color: var(--warning);
-  border: 2px solid var(--warning);
 }
 
 /* Form Section */
@@ -242,6 +192,12 @@ label i {
   font-size: 1.1rem;
 }
 
+label .required {
+  color: var(--danger);
+  font-weight: 800;
+  margin-left: 4px;
+}
+
 input, select, textarea {
   width: 100%;
   padding: 12px 16px;
@@ -284,6 +240,30 @@ textarea {
 .btn-submit:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(22, 163, 74, 0.5);
+}
+
+.btn-submit:disabled {
+  background: var(--gray-200);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.error-message {
+  background: #fee2e2;
+  border: 2px solid var(--danger);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #991b1b;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  display: none;
+}
+
+.error-message.show {
+  display: flex;
 }
 
 /* Table Section */
@@ -514,45 +494,6 @@ tbody td {
     <p class="header-subtitle">สร้างและจัดการโปรโมชั่นส่วนลดสำหรับลูกค้า</p>
   </div>
 
-  <!-- Admin Guide -->
-  <div class="admin-guide">
-    <div class="guide-title">
-      <i class="fas fa-info-circle"></i>
-      📘 คู่มือการใช้งานสำหรับ Admin
-    </div>
-    <div class="guide-content">
-      <div class="guide-item">
-        <strong>🎯 วิธีสร้างโปรโมชั่น:</strong>
-        <p>กรอกข้อมูลในฟอร์มด้านล่าง → กดบันทึก → โปรโมชั่นจะถูกสร้างในสถานะ "รอเริ่ม" (ยังใช้งานไม่ได้)</p>
-      </div>
-      
-      <div class="guide-item">
-        <strong>▶️ การเปิดใช้งาน:</strong>
-        <p>กดปุ่ม <span style="color: #16a34a; font-weight: 700;">"เริ่มใช้งาน"</span> → โปรโมชั่นจะเริ่มทำงานทันที และมีอายุ 1 ปี</p>
-      </div>
-      
-      <div class="guide-item">
-        <strong>⏸️ การหยุดใช้งาน:</strong>
-        <p>กดปุ่ม <span style="color: #f59e0b; font-weight: 700;">"หยุดใช้งาน"</span> → โปรโมชั่นจะหยุดทำงานทันที</p>
-      </div>
-      
-      <div class="guide-item">
-        <strong>✏️ การแก้ไข:</strong>
-        <p>กดปุ่ม <span style="color: #2563eb; font-weight: 700;">"แก้ไข"</span> → แก้ไขข้อมูลได้ทุกเวลา (ไม่กระทบการใช้งาน)</p>
-      </div>
-      
-      <div class="guide-item guide-highlight">
-        <strong>⚠️ เงื่อนไขการใช้งาน (Conditions):</strong>
-        <p>
-          • <strong>จองครั้งแรกลดเลยทันที</strong> → ระบบจะตรวจสอบว่าเป็นการจองครั้งแรกหรือไม่<br>
-          • <strong>จองก่อน 18:00 ลดเลยทันที</strong> → ระบบจะเช็คเวลาเริ่มต้นของการจอง<br>
-          • <strong>โค้ดส่วนลดพิเศษมาแล้ว</strong> → ใช้ได้ทุกคน ไม่มีเงื่อนไขพิเศษ<br>
-          • <strong>หากไม่ระบุ</strong> → ระบบจะไม่เช็คเงื่อนไข ทุกคนใช้ได้
-        </p>
-      </div>
-    </div>
-  </div>
-
   <!-- Form Section -->
   <div class="form-card">
     <h2 class="form-title">
@@ -560,12 +501,13 @@ tbody td {
       เพิ่มโปรโมชั่นใหม่
     </h2>
     
-    <form method="POST" action="promotion_save.php">
+    <form method="POST" action="promotion_save.php" id="promoForm">
       <div class="form-grid">
         <div class="form-group">
           <label>
             <i class="fas fa-tag"></i>
             ชื่อโปรโมชั่น
+            <span class="required">*</span>
           </label>
           <input type="text" name="PromoName" placeholder="เช่น ส่วนลดฤดูร้อน" required>
         </div>
@@ -574,6 +516,7 @@ tbody td {
           <label>
             <i class="fas fa-ticket-alt"></i>
             รหัสโปรโมชั่น
+            <span class="required">*</span>
           </label>
           <input type="text" name="PromoCode" placeholder="เช่น SUMMER2025" required>
         </div>
@@ -582,6 +525,7 @@ tbody td {
           <label>
             <i class="fas fa-percentage"></i>
             ประเภทส่วนลด
+            <span class="required">*</span>
           </label>
           <select name="DiscountType" required>
             <option value="percent">เปอร์เซ็นต์ (%)</option>
@@ -593,6 +537,7 @@ tbody td {
           <label>
             <i class="fas fa-dollar-sign"></i>
             มูลค่าส่วนลด
+            <span class="required">*</span>
           </label>
           <input type="number" name="DiscountValue" step="0.01" placeholder="เช่น 20 หรือ 100" required>
         </div>
@@ -601,58 +546,70 @@ tbody td {
           <label>
             <i class="fas fa-align-left"></i>
             คำอธิบาย
+            <span class="required">*</span>
           </label>
-          <textarea name="Description" rows="3" placeholder="อธิบายรายละเอียดโปรโมชั่นให้ลูกค้าเข้าใจง่าย"></textarea>
+          <textarea name="Description" rows="3" placeholder="อธิบายรายละเอียดโปรโมชั่นให้ลูกค้าเข้าใจง่าย" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <i class="fas fa-calendar-alt"></i>
+            วันเริ่มต้น
+            <span class="required">*</span>
+          </label>
+          <input type="datetime-local" name="StartDate" required>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <i class="fas fa-calendar-check"></i>
+            วันสิ้นสุด
+            <span class="required">*</span>
+          </label>
+          <input type="datetime-local" name="EndDate" required>
         </div>
 
         <div class="form-group full-width">
           <label>
             <i class="fas fa-info-circle"></i>
-            เงื่อนไขการใช้งาน (Conditions)
+            เงื่อนไขการใช้งาน
+            <span class="required">*</span>
           </label>
-          <textarea name="Conditions" rows="3" placeholder="กรอกเงื่อนไขตามประเภทที่ต้องการ..."></textarea>
+          <textarea name="Conditions" rows="3" placeholder="กรอกเงื่อนไขตามประเภทที่ต้องการ..." required></textarea>
           
           <div style="margin-top: 12px; padding: 16px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border: 2px solid #3b82f6; border-radius: 12px;">
             <div style="font-weight: 700; color: #1e40af; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
               <i class="fas fa-lightbulb" style="font-size: 1.2rem;"></i>
-              💡 เงื่อนไขพิเศษที่รองรับ
+              💡 เงื่อนไขพิเศษที่รองรับ (ต้องกรอกตามตัวอย่าง)
             </div>
             
             <div style="display: grid; gap: 12px;">
               <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #16a34a;">
                 <strong style="color: #16a34a;">🎯 จองครั้งแรก:</strong> 
                 <code style="background: #f0fdf4; padding: 2px 8px; border-radius: 4px; color: #15803d; font-weight: 600;">จองครั้งแรกลดเลยทันที</code>
-                <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
-                  → ลูกค้าใช้ได้เฉพาะการจองครั้งแรกเท่านั้น (ระบบจะตรวจสอบประวัติอัตโนมัติ)
-                </div>
               </div>
               
               <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #2563eb;">
                 <strong style="color: #2563eb;">⏰ จองก่อน 18:00:</strong> 
                 <code style="background: #eff6ff; padding: 2px 8px; border-radius: 4px; color: #1e40af; font-weight: 600;">จองก่อน 18:00 ลดเลยทันที</code>
-                <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
-                  → ใช้ได้เฉพาะเวลาเริ่มต้นก่อน 18:00 น. (ระบบจะตรวจสอบเวลาที่เลือก)
-                </div>
               </div>
               
               <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #f59e0b;">
                 <strong style="color: #f59e0b;">⭐ ส่วนลดพิเศษ:</strong> 
                 <code style="background: #fffbeb; padding: 2px 8px; border-radius: 4px; color: #92400e; font-weight: 600;">โค้ดส่วนลดพิเศษมาแล้ว</code>
-                <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
-                  → ใช้ได้ทุกคน ไม่มีเงื่อนไขพิเศษ
-                </div>
               </div>
             </div>
-            
-            <div style="margin-top: 12px; padding: 10px; background: #fef3c7; border-radius: 6px; font-size: 0.9rem; color: #92400e;">
-              <i class="fas fa-exclamation-triangle"></i> 
-              <strong>หมายเหตุ:</strong> ต้องพิมพ์ข้อความตามที่กำหนดเท่านั้น ระบบจะจับคำสำคัญเพื่อกำหนดประเภทเงื่อนไขอัตโนมัติ
-            </div>
+          </div>
+          
+          <div class="error-message" id="conditionError">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>กรุณากรอกเงื่อนไขการใช้งาน</span>
           </div>
         </div>
+
       </div>
 
-      <button type="submit" class="btn-submit">
+      <button type="submit" class="btn-submit" id="submitBtn">
         <i class="fas fa-save"></i>
         บันทึกโปรโมชั่น
       </button>
@@ -744,6 +701,43 @@ tbody td {
     </a>
   </div>
 </div>
+
+<script>
+// ✅ Form Validation - บังคับกรอกเงื่อนไข
+document.getElementById('promoForm').addEventListener('submit', function(e) {
+  const conditions = document.querySelector('textarea[name="Conditions"]').value.trim();
+  const errorMsg = document.getElementById('conditionError');
+  
+  if (conditions === '') {
+    e.preventDefault();
+    errorMsg.classList.add('show');
+    document.querySelector('textarea[name="Conditions"]').focus();
+    document.querySelector('textarea[name="Conditions"]').style.borderColor = 'var(--danger)';
+    return false;
+  } else {
+    errorMsg.classList.remove('show');
+    document.querySelector('textarea[name="Conditions"]').style.borderColor = '';
+  }
+  
+  // Validate dates
+  const startDate = new Date(document.querySelector('input[name="StartDate"]').value);
+  const endDate = new Date(document.querySelector('input[name="EndDate"]').value);
+  
+  if (endDate <= startDate) {
+    e.preventDefault();
+    alert('⚠️ วันสิ้นสุดต้องมาหลังวันเริ่มต้น');
+    return false;
+  }
+});
+
+// Clear error on input
+document.querySelector('textarea[name="Conditions"]').addEventListener('input', function() {
+  if (this.value.trim() !== '') {
+    document.getElementById('conditionError').classList.remove('show');
+    this.style.borderColor = '';
+  }
+});
+</script>
 
 </body>
 </html>
