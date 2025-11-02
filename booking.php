@@ -613,7 +613,6 @@ let currentPromoData = null;
 const pricePerHour = <?php echo (float)$venue['PricePerHour']; ?>;
 
 // 🔗 ตัวแปรสำหรับเก็บ DOM Elements และค่าคงที่ (Global Scope)
-// ตัวแปรเหล่านี้ถูกประกาศใน Global Scope เพื่อให้ computeEnd() เข้าถึงได้
 let dateEl, hh12El, mmEl, apEl, startHidden, hoursEl, endDisp, endHidden, startHelp, endHelp, submitBtn;
 let open24, close24, totalPriceEl;
 let basePriceEl, discountRowEl, discountEl, netPriceEl;
@@ -657,7 +656,6 @@ function nowHHMM(){
 // ⭐ computeEnd() ถูกย้ายมา Global Scope เพื่อให้ checkPromotion เรียกใช้ได้
 // ----------------------------------------------------------------
 function computeEnd(){
-  // ตรวจสอบว่ามีการโหลด DOM Elements แล้วหรือยัง
   if (!startHidden) return; 
 
   endHelp.textContent=''; endHelp.classList.remove('error'); submitBtn.disabled=false;
@@ -678,12 +676,12 @@ function computeEnd(){
   endHidden.value = end24;
   endDisp.value = to12(end24);
   
-  // 💰 คำนวณราคาต้นทุน
+  // 💰 คำนวดราคาต้นทุน
   let basePrice = hrs * pricePerHour;
   let finalPrice = basePrice;
   let discountAmount = 0;
   
-  // 🎁 คำนวณส่วนลดถ้ามีโปรโมชั่น
+  // 🎁 คำนวดส่วนลดถ้ามีโปรโมชั่น
   if (currentPromoData) {
     if (currentPromoData.discount_type === 'percent') {
       discountAmount = basePrice * (currentPromoData.discount_value / 100);
@@ -692,8 +690,8 @@ function computeEnd(){
       discountAmount = currentPromoData.discount_value;
       finalPrice = basePrice - discountAmount;
     }
-    finalPrice = Math.max(0, finalPrice); // ไม่ให้ติดลบ
-    discountAmount = basePrice - finalPrice; // คำนวณส่วนลดที่แท้จริง
+    finalPrice = Math.max(0, finalPrice);
+    discountAmount = basePrice - finalPrice;
   }
   
   // ✅ อัปเดตการแสดงผล
@@ -755,7 +753,6 @@ function checkPromotion() {
       currentPromoData = null;
       resultEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
       resultEl.className = 'show error';
-      // ⭐ บรรทัดนี้จะไม่เกิด ReferenceError อีกต่อไป
       computeEnd(); 
     });
 }
@@ -766,7 +763,6 @@ function checkPromotion() {
 // ----------------------------------------------------------------
 (function(){
   // 1. กำหนดค่าให้ตัวแปร Global
-  // ตัวแปรที่ถูกประกาศด้วย let ด้านบน จะถูกกำหนดค่าที่นี่
   dateEl = document.getElementById('booking_date');
   hh12El = document.getElementById('hh12');
   mmEl = document.getElementById('mm');
@@ -807,6 +803,7 @@ function checkPromotion() {
     const d = new Date();
     const todayStr = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
     startHelp.textContent=''; startHelp.classList.remove('error');
+    
     if (dateEl.value === todayStr){
       let minStart = roundUpTo30(nowHHMM());
       if (cmpTime(minStart, open24) < 0) minStart = open24;
@@ -816,7 +813,7 @@ function checkPromotion() {
         submitBtn.disabled = true;
         return;
       }
-      startHelp.innerHTML = `<i class="fas fa-clock"></i> เวลาที่เร็วสุดวันนี้: ${to12(minStart)}`;
+      startHelp.innerHTML = `<i class="fas fa-clock"></i> เวลาที่เร็วสุดวันนี้: ${to12(minStart)} (ถ้าเลือกเวลาก่อนหน้านี้จะไม่สามารถจองได้)`;
     }
   }
 
@@ -829,27 +826,39 @@ function checkPromotion() {
     let st24 = to24_from_parts(hh12El.value, mmEl.value, apEl.value);
     if (!st24){ return; }
 
+    // ตรวจสอบว่าเวลาที่เลือกอยู่ในช่วงที่อนุญาต
     const todayStr = new Date().toISOString().slice(0,10);
+    let minStart = open24;
+    
     if (dateEl.value === todayStr){
-      let minStart = roundUpTo30(nowHHMM());
-      if (cmpTime(minStart, open24) < 0) minStart = open24;
-      if (cmpTime(st24, minStart) < 0) {
-        const twelve = to12(minStart);
-        const [t,ap] = twelve.split(' '); const [H,M]=t.split(':');
-        hh12El.value = H; mmEl.value = M; apEl.value = ap;
-        st24 = minStart;
-      }
-    } else {
-      if (cmpTime(st24, open24) < 0) st24 = open24;
+      let nowRounded = roundUpTo30(nowHHMM());
+      if (cmpTime(nowRounded, open24) > 0) minStart = nowRounded;
     }
 
-    if (cmpTime(st24, close24) > 0) {
-      const twelve = to12(close24);
-      const [t,ap]=twelve.split(' '); const [H,M]=t.split(':');
-      hh12El.value=H; mmEl.value=M; apEl.value=ap;
-      st24 = close24;
+    // แสดงข้อความเตือนถ้าเวลาไม่ถูกต้อง แต่ไม่บังคับเปลี่ยนค่า
+    startHelp.textContent=''; 
+    startHelp.classList.remove('error');
+    
+    if (cmpTime(st24, minStart) < 0) {
+      startHelp.innerHTML = `<i class="fas fa-exclamation-circle"></i> เวลาเริ่มต้องไม่เร็วกว่า ${to12(minStart)}`;
+      startHelp.classList.add('error');
+      submitBtn.disabled = true;
+      startHidden.value = '';
+      computeEnd();
+      return;
+    }
+    
+    if (cmpTime(st24, close24) >= 0) {
+      startHelp.innerHTML = `<i class="fas fa-exclamation-circle"></i> เวลาเริ่มต้องก่อนเวลาปิดสนาม (${to12(close24)})`;
+      startHelp.classList.add('error');
+      submitBtn.disabled = true;
+      startHidden.value = '';
+      computeEnd();
+      return;
     }
 
+    // ถ้าผ่านการตรวจสอบ
+    submitBtn.disabled = false;
     startHidden.value = st24;
     computeEnd(); 
   }
