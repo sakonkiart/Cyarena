@@ -130,6 +130,56 @@ body {
   font-weight: 500;
 }
 
+/* Admin Guide Box */
+.admin-guide {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.9));
+  border-radius: 20px;
+  padding: 30px;
+  margin-bottom: 40px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  border: 3px solid rgba(255, 255, 255, 0.5);
+}
+
+.guide-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.guide-content {
+  display: grid;
+  gap: 15px;
+}
+
+.guide-item {
+  background: white;
+  padding: 15px 20px;
+  border-radius: 12px;
+  border-left: 5px solid var(--primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.guide-item strong {
+  color: var(--primary);
+  font-size: 1.05rem;
+}
+
+.guide-item p {
+  color: var(--gray-700);
+  margin-top: 5px;
+  line-height: 1.6;
+}
+
+.guide-highlight {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border-left-color: var(--warning);
+  border: 2px solid var(--warning);
+}
+
 /* Form Section */
 .form-card {
   background: white;
@@ -211,7 +261,7 @@ input:focus, select:focus, textarea:focus {
 
 textarea {
   resize: vertical;
-  min-height: 80px;
+  min-height: 100px;
 }
 
 .btn-submit {
@@ -464,6 +514,45 @@ tbody td {
     <p class="header-subtitle">สร้างและจัดการโปรโมชั่นส่วนลดสำหรับลูกค้า</p>
   </div>
 
+  <!-- Admin Guide -->
+  <div class="admin-guide">
+    <div class="guide-title">
+      <i class="fas fa-info-circle"></i>
+      📘 คู่มือการใช้งานสำหรับ Admin
+    </div>
+    <div class="guide-content">
+      <div class="guide-item">
+        <strong>🎯 วิธีสร้างโปรโมชั่น:</strong>
+        <p>กรอกข้อมูลในฟอร์มด้านล่าง → กดบันทึก → โปรโมชั่นจะถูกสร้างในสถานะ "รอเริ่ม" (ยังใช้งานไม่ได้)</p>
+      </div>
+      
+      <div class="guide-item">
+        <strong>▶️ การเปิดใช้งาน:</strong>
+        <p>กดปุ่ม <span style="color: #16a34a; font-weight: 700;">"เริ่มใช้งาน"</span> → โปรโมชั่นจะเริ่มทำงานทันที และมีอายุ 1 ปี</p>
+      </div>
+      
+      <div class="guide-item">
+        <strong>⏸️ การหยุดใช้งาน:</strong>
+        <p>กดปุ่ม <span style="color: #f59e0b; font-weight: 700;">"หยุดใช้งาน"</span> → โปรโมชั่นจะหยุดทำงานทันที</p>
+      </div>
+      
+      <div class="guide-item">
+        <strong>✏️ การแก้ไข:</strong>
+        <p>กดปุ่ม <span style="color: #2563eb; font-weight: 700;">"แก้ไข"</span> → แก้ไขข้อมูลได้ทุกเวลา (ไม่กระทบการใช้งาน)</p>
+      </div>
+      
+      <div class="guide-item guide-highlight">
+        <strong>⚠️ เงื่อนไขการใช้งาน (Conditions):</strong>
+        <p>
+          • <strong>จองครั้งแรกลดเลยทันที</strong> → ระบบจะตรวจสอบว่าเป็นการจองครั้งแรกหรือไม่<br>
+          • <strong>จองก่อน 18:00 ลดเลยทันที</strong> → ระบบจะเช็คเวลาเริ่มต้นของการจอง<br>
+          • <strong>โค้ดส่วนลดพิเศษมาแล้ว</strong> → ใช้ได้ทุกคน ไม่มีเงื่อนไขพิเศษ<br>
+          • <strong>หากไม่ระบุ</strong> → ระบบจะไม่เช็คเงื่อนไข ทุกคนใช้ได้
+        </p>
+      </div>
+    </div>
+  </div>
+
   <!-- Form Section -->
   <div class="form-card">
     <h2 class="form-title">
@@ -508,70 +597,60 @@ tbody td {
           <input type="number" name="DiscountValue" step="0.01" placeholder="เช่น 20 หรือ 100" required>
         </div>
 
-        <div class="form-group">
+        <div class="form-group full-width">
           <label>
-            <i class="fas fa-calendar-alt"></i>
-            วันเริ่มต้น
+            <i class="fas fa-align-left"></i>
+            คำอธิบาย
           </label>
-          <input type="datetime-local" name="StartDate" required>
+          <textarea name="Description" rows="3" placeholder="อธิบายรายละเอียดโปรโมชั่นให้ลูกค้าเข้าใจง่าย"></textarea>
         </div>
 
-        <div class="form-group">
+        <div class="form-group full-width">
           <label>
-            <i class="fas fa-calendar-check"></i>
-            วันสิ้นสุด
+            <i class="fas fa-info-circle"></i>
+            เงื่อนไขการใช้งาน (Conditions)
           </label>
-          <input type="datetime-local" name="EndDate" required>
-        </div>
-
-        <!-- เพิ่มส่วนนี้ในฟอร์มเพิ่มโปรโมชั่นใน promotion_manage.php -->
-
-<div class="form-group full-width">
-  <label>
-    <i class="fas fa-info-circle"></i>
-    เงื่อนไขการใช้งาน (Conditions)
-  </label>
-  <textarea name="Conditions" rows="3" placeholder="กรอกเงื่อนไขตามประเภทที่ต้องการ..."></textarea>
-  
-  <!-- ✅ คำแนะนำเงื่อนไข -->
-  <div style="margin-top: 12px; padding: 16px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border: 2px solid #3b82f6; border-radius: 12px;">
-    <div style="font-weight: 700; color: #1e40af; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-      <i class="fas fa-lightbulb" style="font-size: 1.2rem;"></i>
-      💡 เงื่อนไขพิเศษที่รองรับ
-    </div>
-    
-    <div style="display: grid; gap: 12px;">
-      <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #16a34a;">
-        <strong style="color: #16a34a;">🎯 จองครั้งแรก:</strong> 
-        <code style="background: #f0fdf4; padding: 2px 8px; border-radius: 4px; color: #15803d; font-weight: 600;">จองครั้งแรกลดเลยทันที</code>
-        <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
-          → ลูกค้าใช้ได้เฉพาะการจองครั้งแรกเท่านั้น (ระบบจะตรวจสอบประวัติอัตโนมัติ)
-        </div>
-      </div>
-      
-      <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #2563eb;">
-        <strong style="color: #2563eb;">⏰ จองก่อน 18:00:</strong> 
-        <code style="background: #eff6ff; padding: 2px 8px; border-radius: 4px; color: #1e40af; font-weight: 600;">จองก่อน 18:00 ลดเลยทันที</code>
-        <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
-          → ใช้ได้เฉพาะเวลาเริ่มต้นก่อน 18:00 น. (ระบบจะตรวจสอบเวลาที่เลือก)
-        </div>
-      </div>
-      
-      <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #f59e0b;">
-        <strong style="color: #f59e0b;">⭐ ส่วนลดพิเศษ:</strong> 
-        <code style="background: #fffbeb; padding: 2px 8px; border-radius: 4px; color: #92400e; font-weight: 600;">โค้ดส่วนลดพิเศษมาแล้ว</code>
-        <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
-          → ใช้ได้ทุกคน ไม่มีเงื่อนไขพิเศษ
+          <textarea name="Conditions" rows="3" placeholder="กรอกเงื่อนไขตามประเภทที่ต้องการ..."></textarea>
+          
+          <div style="margin-top: 12px; padding: 16px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border: 2px solid #3b82f6; border-radius: 12px;">
+            <div style="font-weight: 700; color: #1e40af; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-lightbulb" style="font-size: 1.2rem;"></i>
+              💡 เงื่อนไขพิเศษที่รองรับ
+            </div>
+            
+            <div style="display: grid; gap: 12px;">
+              <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #16a34a;">
+                <strong style="color: #16a34a;">🎯 จองครั้งแรก:</strong> 
+                <code style="background: #f0fdf4; padding: 2px 8px; border-radius: 4px; color: #15803d; font-weight: 600;">จองครั้งแรกลดเลยทันที</code>
+                <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
+                  → ลูกค้าใช้ได้เฉพาะการจองครั้งแรกเท่านั้น (ระบบจะตรวจสอบประวัติอัตโนมัติ)
+                </div>
+              </div>
+              
+              <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #2563eb;">
+                <strong style="color: #2563eb;">⏰ จองก่อน 18:00:</strong> 
+                <code style="background: #eff6ff; padding: 2px 8px; border-radius: 4px; color: #1e40af; font-weight: 600;">จองก่อน 18:00 ลดเลยทันที</code>
+                <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
+                  → ใช้ได้เฉพาะเวลาเริ่มต้นก่อน 18:00 น. (ระบบจะตรวจสอบเวลาที่เลือก)
+                </div>
+              </div>
+              
+              <div style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                <strong style="color: #f59e0b;">⭐ ส่วนลดพิเศษ:</strong> 
+                <code style="background: #fffbeb; padding: 2px 8px; border-radius: 4px; color: #92400e; font-weight: 600;">โค้ดส่วนลดพิเศษมาแล้ว</code>
+                <div style="font-size: 0.85rem; color: #6b7280; margin-top: 4px;">
+                  → ใช้ได้ทุกคน ไม่มีเงื่อนไขพิเศษ
+                </div>
+              </div>
+            </div>
+            
+            <div style="margin-top: 12px; padding: 10px; background: #fef3c7; border-radius: 6px; font-size: 0.9rem; color: #92400e;">
+              <i class="fas fa-exclamation-triangle"></i> 
+              <strong>หมายเหตุ:</strong> ต้องพิมพ์ข้อความตามที่กำหนดเท่านั้น ระบบจะจับคำสำคัญเพื่อกำหนดประเภทเงื่อนไขอัตโนมัติ
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-    
-    <div style="margin-top: 12px; padding: 10px; background: #fef3c7; border-radius: 6px; font-size: 0.9rem; color: #92400e;">
-      <i class="fas fa-exclamation-triangle"></i> 
-      <strong>หมายเหตุ:</strong> ต้องพิมพ์ข้อความตามที่กำหนดเท่านั้น ระบบจะจับคำสำคัญเพื่อกำหนดประเภทเงื่อนไขอัตโนมัติ
-    </div>
-  </div>
-</div>
 
       <button type="submit" class="btn-submit">
         <i class="fas fa-save"></i>
