@@ -13,8 +13,6 @@ $PromoCode     = trim($_POST['PromoCode']     ?? '');
 $Description   = trim($_POST['Description']   ?? '');
 $DiscountType  = trim($_POST['DiscountType']  ?? 'percent');
 $DiscountValue = $_POST['DiscountValue']      ?? '';
-$StartDate     = trim($_POST['StartDate']     ?? '');
-$EndDate       = trim($_POST['EndDate']       ?? '');
 $Conditions    = trim($_POST['Conditions']    ?? '');
 
 // ✅ ตรวจจับประเภทเงื่อนไข
@@ -41,9 +39,11 @@ if ($DiscountValue === null) {
     $errors[] = 'ส่วนลดไม่ถูกต้อง';
 }
 
-// แปลงวันที่ให้เป็นรูปแบบที่ MySQL ยอมรับ
-$StartDate = $StartDate !== '' ? date('Y-m-d H:i:s', strtotime($StartDate)) : null;
-$EndDate   = $EndDate   !== '' ? date('Y-m-d H:i:s', strtotime($EndDate))   : null;
+// ✅ กำหนดวันที่อัตโนมัติ (สถานะ "รอเริ่ม")
+// วันเริ่มต้น = 1 ปีในอนาคต (เพื่อให้เป็นสถานะ "รอเริ่ม")
+// วันสิ้นสุด = 2 ปีในอนาคต
+$StartDate = date('Y-m-d H:i:s', strtotime('+1 year'));
+$EndDate   = date('Y-m-d H:i:s', strtotime('+2 year'));
 
 if ($errors) {
     $_SESSION['error_message'] = implode("\n", $errors);
@@ -71,7 +71,10 @@ $stmt->bind_param(
 );
 
 if ($stmt->execute()) {
-    $_SESSION['success_message'] = 'บันทึกโปรโมชันเรียบร้อยแล้ว (ประเภท: ' . $ConditionType . ')';
+    $_SESSION['success_message'] = '✅ สร้างโปรโมชั่นเรียบร้อยแล้ว!' . "\n\n" . 
+                                    'ประเภท: ' . $ConditionType . "\n" .
+                                    'สถานะ: รอเริ่ม (🔵)' . "\n\n" .
+                                    'กรุณากดปุ่ม "เริ่มใช้งาน" เพื่อเปิดใช้โปรโมชั่น';
 } else {
     $_SESSION['error_message'] = 'บันทึกล้มเหลว: ' . $stmt->error;
 }
