@@ -463,19 +463,19 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
             <label class="form-label">รหัสผ่านเดิม</label>
             <div class="password-toggle-wrapper">
               <input type="password" name="current_password" id="current_password" class="form-control"
-                     placeholder="กรอกรหัสผ่านเดิมเพื่อยืนยัน">
+                     placeholder="กรอกรหัสผ่านปัจจุบันของคุณ" autocomplete="off">
               <button type="button" class="password-toggle-btn" data-target="current_password">
                 <i class="bi bi-eye"></i>
               </button>
             </div>
-            <div class="help">กดปุ่มตาเพื่อแสดง/ซ่อนรหัสผ่านที่กำลังพิมพ์</div>
+            <div class="help">จำเป็นต้องกรอกรหัสผ่านเดิมเพื่อยืนยันตัวตนก่อนเปลี่ยนรหัสใหม่</div>
           </div>
 
           <div class="col-md-6">
             <label class="form-label">รหัสผ่านใหม่</label>
             <div class="password-toggle-wrapper">
               <input type="password" name="new_password" id="new_password" class="form-control"
-                     placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6">
+                     placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6" autocomplete="off">
               <button type="button" class="password-toggle-btn" data-target="new_password">
                 <i class="bi bi-eye"></i>
               </button>
@@ -489,7 +489,7 @@ $avatarSrc   = $avatarPath && file_exists(__DIR__ . '/' . $avatarPath)
             <label class="form-label">ยืนยันรหัสผ่านใหม่</label>
             <div class="password-toggle-wrapper">
               <input type="password" name="confirm_password" id="confirm_password" class="form-control"
-                     placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
+                     placeholder="กรอกรหัสผ่านใหม่อีกครั้ง" autocomplete="off">
               <button type="button" class="password-toggle-btn" data-target="confirm_password">
                 <i class="bi bi-eye"></i>
               </button>
