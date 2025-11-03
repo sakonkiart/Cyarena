@@ -1,6 +1,11 @@
 <?php
 session_start();
 
+/* >>> ADD: ป้องกัน cache ให้โหลดข้อมูลสดหลัง redirect เสมอ */
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 /* =========================
    >>> ADD: รองรับสิทธิ์ type_admin (ลูกค้าที่ถูกแต่งตั้งให้จัดการการจองได้เฉพาะ 1 ประเภทสนาม)
    แนวคิด:
@@ -25,6 +30,11 @@ if (isset($_SESSION['role']) && $_SESSION['role'] === 'type_admin') {
 
 // ✅ ตรวจสอบสิทธิ์พนักงาน (type_admin ที่สวมบทเป็น employee ก็จะผ่านได้)
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
+    /* >>> ADD: คืน role ให้ถูกต้องก่อน redirect */
+    if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
+        $_SESSION['role'] = 'type_admin';
+        unset($_SESSION['role_backup_for_type_admin']);
+    }
     header("Location: login.php");
     exit;
 }
@@ -50,6 +60,14 @@ if ($avatarPath && _exists_rel($avatarPath)) {
     $avatarSrc = 'data:image/svg+xml;base64,' . base64_encode(
         '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="100%" height="100%" fill="#2563eb"/><text x="50%" y="54%" text-anchor="middle" font-size="48" font-family="Arial" fill="#fff">👤</text></svg>'
     );
+}
+
+/* >>> ADD: util คืนค่า role type_admin ถ้าเคยสวมบท employee (เรียกก่อนทุก redirect) */
+function _restore_type_admin_role_before_redirect(): void {
+    if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
+        $_SESSION['role'] = 'type_admin';
+        unset($_SESSION['role_backup_for_type_admin']);
+    }
 }
 
 /* >>> ADD: ฟังก์ชันตรวจสอบสิทธิ์ของ type_admin ว่าสามารถจัดการ booking นี้ได้หรือไม่ */
@@ -84,6 +102,7 @@ if (
     // ถ้าเป็น type_admin ต้องยืนยันสิทธิ์ตามประเภทสนามก่อน
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $bid, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์จัดการการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+        _restore_type_admin_role_before_redirect(); /* >>> ADD */
         header("Location: manage_bookings.php");
         exit;
     }
@@ -113,6 +132,7 @@ if (
         } else {
             $_SESSION['error_message'] = "❌ ไม่สามารถเตรียมคำสั่งได้";
         }
+        _restore_type_admin_role_before_redirect(); /* >>> ADD */
         header("Location: manage_bookings.php");
         exit;
     }
@@ -129,6 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     if ($IS_TYPE_ADMIN) {
         if (!_type_admin_can_manage($conn, $booking_id, $TYPE_ADMIN_VTID)) {
             $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์แก้ไขการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+            _restore_type_admin_role_before_redirect(); /* >>> ADD */
             header("Location: manage_bookings.php");
             exit;
         }
@@ -146,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         } else {
             $_SESSION['error_message'] = "❌ ไม่สามารถเตรียมคำสั่งอัปเดตได้";
         }
+        _restore_type_admin_role_before_redirect(); /* >>> ADD */
         header("Location: manage_bookings.php");
         exit; // กันไม่ให้ไหลไปใช้โค้ดเดิมของ employee ด้านล่าง
     }
@@ -163,6 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดต: " . $stmt->error;
     }
     $stmt->close();
+    _restore_type_admin_role_before_redirect(); /* >>> ADD */
     header("Location: manage_bookings.php");
     exit;
 }
@@ -174,12 +197,14 @@ if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
     /* >>> ADD: ป้องกัน type_admin ยกเลิกข้ามประเภทสนาม */
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $cancel_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ยกเลิกการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+        _restore_type_admin_role_before_redirect(); /* >>> ADD */
         header("Location: manage_bookings.php");
         exit;
     }
 
     $conn->query("UPDATE Tbl_Booking SET BookingStatusID = 3 WHERE BookingID = $cancel_id");
     $_SESSION['success_message'] = "✅ ยกเลิกการจองเรียบร้อยแล้ว! (Booking #$cancel_id)";
+    _restore_type_admin_role_before_redirect(); /* >>> ADD */
     header("Location: manage_bookings.php");
     exit;
 }
@@ -191,6 +216,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     /* >>> ADD: ป้องกัน type_admin ลบข้ามประเภทสนาม */
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $delete_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ลบการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+        _restore_type_admin_role_before_redirect(); /* >>> ADD */
         header("Location: manage_bookings.php");
         exit;
     }
@@ -207,6 +233,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     }
     $stmt->close();
     
+    _restore_type_admin_role_before_redirect(); /* >>> ADD */
     header("Location: manage_bookings.php");
     exit;
 }
@@ -341,16 +368,6 @@ $conn->close();
     animation: slideDown 0.4s;
   }
 
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  @keyframes slideDown {
-    from { transform: translateY(-50px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-
   .slip-modal-header {
     background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
     color: white;
@@ -365,6 +382,9 @@ $conn->close();
     max-height: calc(90vh - 100px);
     overflow-y: auto.
   }
+
+  /* >>> ADD: override แก้จุดพิมพ์ผิด 'overflow-y: auto.' ให้ทำงานถูกต้อง โดยไม่แก้ของเดิม */
+  .slip-modal-body { overflow-y: auto; }
 
   .slip-image-container {
     text-align: center;
@@ -426,17 +446,9 @@ $conn->close();
     transform: rotate(90deg) scale(1.1);
   }
 
-  table {
-    font-size: 0.875rem;
-  }
-
-  table td {
-    vertical-align: middle;
-  }
-
-  .payment-cell {
-    min-width: 140px;
-  }
+  table { font-size: 0.875rem; }
+  table td { vertical-align: middle; }
+  .payment-cell { min-width: 140px; }
 
   /* ปุ่มลบแบบใหม่ */
   .btn-delete {
