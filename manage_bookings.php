@@ -68,6 +68,57 @@ function _type_admin_can_manage(mysqli $conn, int $booking_id, int $vtid): bool 
     return $ok;
 }
 
+/* >>> ADD: รองรับปุ่มลัดเปลี่ยนสถานะ/ชำระเงิน (เช็คสิทธิ์ type_admin ก่อนเสมอ)
+   ใช้ได้กับพารามิเตอร์:
+   - ?quick=confirm|complete|cancel|paid&id=BOOKING_ID
+   - หรือ ?action=confirm|complete|cancel|paid&id=BOOKING_ID
+   - หรือ ?pay=paid&id=BOOKING_ID
+*/
+if (
+    (isset($_GET['quick']) || isset($_GET['action']) || isset($_GET['pay'])) &&
+    isset($_GET['id']) && ctype_digit((string)$_GET['id'])
+) {
+    $op  = $_GET['quick'] ?? ($_GET['action'] ?? (($_GET['pay'] ?? '')));
+    $bid = (int)$_GET['id'];
+
+    // ถ้าเป็น type_admin ต้องยืนยันสิทธิ์ตามประเภทสนามก่อน
+    if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $bid, $TYPE_ADMIN_VTID)) {
+        $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์จัดการการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+        header("Location: manage_bookings.php");
+        exit;
+    }
+
+    // Map คำสั่งเป็น SQL
+    $sql = null; $msg = null;
+    if ($op === 'confirm') {
+        $sql = "UPDATE Tbl_Booking SET BookingStatusID = 2 WHERE BookingID = ?";
+        $msg = "✅ ยืนยันการจองแล้ว";
+    } elseif ($op === 'complete') {
+        $sql = "UPDATE Tbl_Booking SET BookingStatusID = 4 WHERE BookingID = ?";
+        $msg = "✅ ปิดงาน/เสร็จสิ้นแล้ว";
+    } elseif ($op === 'cancel') {
+        $sql = "UPDATE Tbl_Booking SET BookingStatusID = 3 WHERE BookingID = ?";
+        $msg = "✅ ยกเลิกการจองแล้ว";
+    } elseif ($op === 'paid' || $op === 'pay') {
+        $sql = "UPDATE Tbl_Booking SET PaymentStatusID = 2 WHERE BookingID = ?";
+        $msg = "✅ บันทึกชำระเงินแล้ว";
+    }
+
+    if ($sql) {
+        if ($st = $conn->prepare($sql)) {
+            $st->bind_param("i", $bid);
+            $st->execute();
+            $st->close();
+            $_SESSION['success_message'] = "$msg (#{$bid})";
+        } else {
+            $_SESSION['error_message'] = "❌ ไม่สามารถเตรียมคำสั่งได้";
+        }
+        header("Location: manage_bookings.php");
+        exit;
+    }
+}
+/* <<< END ADD */
+
 // ✅ จัดการการอัปเดตสถานะ
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $booking_id = intval($_POST['booking_id']);
