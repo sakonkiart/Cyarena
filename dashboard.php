@@ -89,7 +89,7 @@ if ($__rc = $conn->query($readySql)) {
 
 // ดึงจำนวนโปรโมชั่นที่ใช้งานได้ (สำหรับ Employee)
 $activePromoCount = 0;
-if ($role === 'employee') {
+if ($isSuper) {
     $promoSql = "SELECT COUNT(*) as count FROM Tbl_Promotion WHERE NOW() BETWEEN StartDate AND EndDate";
     $promoRes = $conn->query($promoSql);
     if ($promoRes) {
