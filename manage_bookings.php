@@ -1,7 +1,29 @@
 <?php
 session_start();
 
-// ✅ ตรวจสอบสิทธิ์พนักงาน
+/* =========================
+   >>> ADD: รองรับสิทธิ์ type_admin (ลูกค้าที่ถูกแต่งตั้งให้จัดการการจองได้เฉพาะ 1 ประเภทสนาม)
+   แนวคิด:
+   - ถ้า role เป็น 'type_admin' ให้ "สวมบทชั่วคราว" เป็น employee เพื่อผ่าน if เดิม
+   - บันทึกสถานะไว้ใน $IS_TYPE_ADMIN และจำ VenueTypeID ที่ได้รับมอบสิทธิ์
+   - ทุกการกระทำ (อัปเดต/ยกเลิก/ลบ) จะตรวจสอบสิทธิ์ว่าการจองนั้นอยู่ในประเภทสนามที่ได้รับมอบสิทธิ์จริง
+   - การแสดงรายการจองจะถูกกรองเฉพาะประเภทสนามที่ได้รับมอบสิทธิ์
+   ========================= */
+$IS_TYPE_ADMIN   = false;
+$TYPE_ADMIN_VTID = 0;
+$TYPE_ADMIN_NAME = '';
+
+if (isset($_SESSION['role']) && $_SESSION['role'] === 'type_admin') {
+    $IS_TYPE_ADMIN   = true;
+    $TYPE_ADMIN_VTID = (int)($_SESSION['type_admin_venue_type_id'] ?? 0);
+    $TYPE_ADMIN_NAME = (string)($_SESSION['type_admin_type_name'] ?? '');
+
+    // สวมบท employee ชั่วคราวเพื่อให้ผ่านการตรวจสิทธิ์เดิม (ด้านล่าง)
+    $_SESSION['role_backup_for_type_admin'] = 'type_admin';
+    $_SESSION['role'] = 'employee';
+}
+
+// ✅ ตรวจสอบสิทธิ์พนักงาน (type_admin ที่สวมบทเป็น employee ก็จะผ่านได้)
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
     header("Location: login.php");
     exit;
@@ -30,12 +52,54 @@ if ($avatarPath && _exists_rel($avatarPath)) {
     );
 }
 
+/* >>> ADD: ฟังก์ชันตรวจสอบสิทธิ์ของ type_admin ว่าสามารถจัดการ booking นี้ได้หรือไม่ */
+function _type_admin_can_manage(mysqli $conn, int $booking_id, int $vtid): bool {
+    if ($vtid <= 0) return false;
+    $q = "SELECT 1
+          FROM Tbl_Booking b
+          JOIN Tbl_Venue v ON v.VenueID = b.VenueID
+          WHERE b.BookingID = ? AND v.VenueTypeID = ?";
+    if (!$st = $conn->prepare($q)) return false;
+    $st->bind_param("ii", $booking_id, $vtid);
+    $st->execute();
+    $rs = $st->get_result();
+    $ok = $rs && $rs->num_rows === 1;
+    $st->close();
+    return $ok;
+}
+
 // ✅ จัดการการอัปเดตสถานะ
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $booking_id = intval($_POST['booking_id']);
     $booking_status = intval($_POST['booking_status']);
     $payment_status = intval($_POST['payment_status']);
 
+    /* >>> ADD: ถ้าเป็น type_admin ต้องเช็คสิทธิ์ และอัปเดตโดย "ไม่แตะต้อง EmployeeID" */
+    if ($IS_TYPE_ADMIN) {
+        if (!_type_admin_can_manage($conn, $booking_id, $TYPE_ADMIN_VTID)) {
+            $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์แก้ไขการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+            header("Location: manage_bookings.php");
+            exit;
+        }
+        $sql_ta = "UPDATE Tbl_Booking 
+                   SET BookingStatusID = ?, PaymentStatusID = ?
+                   WHERE BookingID = ?";
+        if ($stmt = $conn->prepare($sql_ta)) {
+            $stmt->bind_param("iii", $booking_status, $payment_status, $booking_id);
+            if ($stmt->execute()) {
+                $_SESSION['success_message'] = "✅ อัปเดตสถานะเรียบร้อยแล้ว! (Booking #$booking_id)";
+            } else {
+                $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดต: " . $stmt->error;
+            }
+            $stmt->close();
+        } else {
+            $_SESSION['error_message'] = "❌ ไม่สามารถเตรียมคำสั่งอัปเดตได้";
+        }
+        header("Location: manage_bookings.php");
+        exit; // กันไม่ให้ไหลไปใช้โค้ดเดิมของ employee ด้านล่าง
+    }
+
+    // ----- โค้ดเดิมของพนักงาน (คงไว้) -----
     $update_sql = "UPDATE Tbl_Booking 
                    SET BookingStatusID = ?, PaymentStatusID = ?, EmployeeID = ?
                    WHERE BookingID = ?";
@@ -55,6 +119,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
 // ✅ จัดการการยกเลิกการจอง
 if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
     $cancel_id = intval($_GET['cancel']);
+
+    /* >>> ADD: ป้องกัน type_admin ยกเลิกข้ามประเภทสนาม */
+    if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $cancel_id, $TYPE_ADMIN_VTID)) {
+        $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ยกเลิกการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+        header("Location: manage_bookings.php");
+        exit;
+    }
+
     $conn->query("UPDATE Tbl_Booking SET BookingStatusID = 3 WHERE BookingID = $cancel_id");
     $_SESSION['success_message'] = "✅ ยกเลิกการจองเรียบร้อยแล้ว! (Booking #$cancel_id)";
     header("Location: manage_bookings.php");
@@ -64,6 +136,13 @@ if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
 // ✅ จัดการการลบการจอง (ใหม่)
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $delete_id = intval($_GET['delete']);
+
+    /* >>> ADD: ป้องกัน type_admin ลบข้ามประเภทสนาม */
+    if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $delete_id, $TYPE_ADMIN_VTID)) {
+        $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ลบการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
+        header("Location: manage_bookings.php");
+        exit;
+    }
     
     // ลบข้อมูลจากฐานข้อมูล
     $delete_sql = "DELETE FROM Tbl_Booking WHERE BookingID = ?";
@@ -104,6 +183,11 @@ $sql = "SELECT
         JOIN Tbl_Booking_Status bs ON b.BookingStatusID = bs.BookingStatusID
         JOIN Tbl_Payment_Status ps ON b.PaymentStatusID = ps.PaymentStatusID
         WHERE 1=1";
+
+/* >>> ADD: จำกัดรายการเฉพาะประเภทสนามของ type_admin */
+if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
+    $sql .= " AND v.VenueTypeID = " . (int)$TYPE_ADMIN_VTID;
+}
 
 if (!empty($search)) {
     $search_safe = $conn->real_escape_string($search);
@@ -353,6 +437,16 @@ $conn->close();
     </div>
   </div>
 </header>
+
+<!-- >>> ADD: แถบแจ้งโหมด type_admin -->
+<?php if ($IS_TYPE_ADMIN): ?>
+<div class="container mx-auto px-4 mt-4">
+  <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-800 p-4 rounded-lg shadow-md">
+    <i class="fas fa-shield-alt mr-2"></i>
+    โหมด <strong>Type Admin</strong> — จัดการได้เฉพาะ <strong>ประเภทสนาม: <?php echo htmlspecialchars($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)); ?></strong>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- Success/Error Messages -->
 <?php if ($success_message): ?>
