@@ -16,6 +16,19 @@ if (isset($conn) && !$conn->connect_error) {
         WHERE NOT EXISTS (SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')
     ");
 
+    // >>> ADD: สร้างตารางสิทธิ์ลูกค้าแบบ admin รายประเภทสนาม (ครั้งเดียว) <<<
+    @$conn->query("
+        CREATE TABLE IF NOT EXISTS Tbl_Type_Admin (
+            TypeAdminID INT AUTO_INCREMENT PRIMARY KEY,
+            CustomerID  INT NOT NULL,
+            VenueTypeID INT NOT NULL,
+            CreatedAt   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_type_admin_customer (CustomerID),
+            KEY idx_type_admin_type (VenueTypeID)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ");
+    // <<< END ADD >>>
+
     // 2) ดึง RoleID
     $rid = null;
     if ($res = @$conn->query("SELECT RoleID FROM Tbl_Role WHERE RoleName='super_admin' LIMIT 1")) {
@@ -86,6 +99,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $_SESSION['user_name'] = $row['FirstName'];
                     $_SESSION['avatar_path'] = $row['AvatarPath'] ?? '';
                     $_SESSION['role'] = 'customer';
+
+                    // >>> ADD: เช็คสิทธิ์ลูกค้าที่ถูกแต่งตั้งเป็น admin ราย "ประเภทสนาม" <<<
+                    if ($ta = $conn->prepare("
+                        SELECT t.VenueTypeID, vt.TypeName
+                        FROM Tbl_Type_Admin t
+                        JOIN Tbl_Venue_Type vt ON vt.VenueTypeID = t.VenueTypeID
+                        WHERE t.CustomerID = ?
+                        LIMIT 1
+                    ")) {
+                        $cid = (int)$row['ID'];
+                        $ta->bind_param("i", $cid);
+                        $ta->execute();
+                        $ta_rs = $ta->get_result();
+                        if ($ta_rs && $ta_rs->num_rows === 1) {
+                            $ta_row = $ta_rs->fetch_assoc();
+                            $_SESSION['role'] = 'type_admin'; // ยกระดับลูกค้าคนนี้
+                            $_SESSION['type_admin_venue_type_id'] = (int)$ta_row['VenueTypeID'];
+                            $_SESSION['type_admin_type_name']     = $ta_row['TypeName'];
+                        }
+                        $ta->close();
+                    }
+                    // <<< END ADD >>>
+
                     $stmt->close();
                     $conn->close();
                     header("Location: dashboard.php");
