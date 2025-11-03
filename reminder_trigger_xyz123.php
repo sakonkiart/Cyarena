@@ -40,7 +40,7 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
         $mail->setFrom('no-reply@cyarena.com', 'CY Arena Booking');
         
         // 🚨 ส่วนที่ต้องแก้ไข: ส่งไปที่อีเมลทดสอบของคุณ
-        $testEmail = 'YOUR_TEST_EMAIL@example.com'; 
+        $testEmail = 'valorantwhq2548@gmail.com'; 
         $mail->addAddress($testEmail, "Tester");
         
         // **(สำคัญมาก) ลบหรือคอมเมนต์บรรทัดนี้ทิ้งไปชั่วคราว:**
