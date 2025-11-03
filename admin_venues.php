@@ -8,6 +8,20 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+/* >>> ADD: รองรับสิทธิ์ type_admin (จำกัดตามประเภทสนามที่ได้รับมอบหมาย) */
+$IS_TYPE_ADMIN   = false;
+$TYPE_ADMIN_VTID = 0;
+$TYPE_ADMIN_NAME = '';
+if (isset($_SESSION['role']) && $_SESSION['role'] === 'type_admin') {
+    $IS_TYPE_ADMIN   = true;
+    $TYPE_ADMIN_VTID = (int)($_SESSION['type_admin_venue_type_id'] ?? 0);
+    $TYPE_ADMIN_NAME = (string)($_SESSION['type_admin_type_name'] ?? '');
+    // สวมบทเป็น employee ชั่วคราวเพื่อผ่านการตรวจบทบาทเดิม
+    $_SESSION['role_backup_for_type_admin'] = 'type_admin';
+    $_SESSION['role'] = 'employee';
+}
+// <<< END ADD
+
 // ✅ ตรวจสอบบทบาท (ต้องเป็นพนักงาน หรือ admin)
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'employee') {
     echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์เข้าถึงหน้านี้</h2>";
@@ -24,6 +38,14 @@ if ($res = $conn->query($typeSql)) {
     $res->free();
 }
 
+/* >>> ADD: ถ้าเป็น type_admin ให้เห็นเฉพาะประเภทสนามของตนเอง */
+if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
+    $types = array_values(array_filter($types, function($t) use ($TYPE_ADMIN_VTID) {
+        return (int)$t['VenueTypeID'] === $TYPE_ADMIN_VTID;
+    }));
+}
+// <<< END ADD
+
 // If editing
 $editing = false;
 $editRow = null;
@@ -35,6 +57,16 @@ if (isset($_GET['id']) && ctype_digit($_GET['id'])) {
     $stmt->close();
     if ($editRow) $editing = true;
 }
+
+/* >>> ADD: ถ้าเป็น type_admin ห้ามแก้ไขสนามข้ามประเภท */
+if ($editing && $IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
+    if ((int)$editRow['VenueTypeID'] !== $TYPE_ADMIN_VTID) {
+        echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์แก้ไขสนามนี้ (อนุญาตเฉพาะประเภท: "
+            . htmlspecialchars($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) . ")</h2>";
+        exit;
+    }
+}
+// <<< END ADD
 
 // Fetch all venues
 $venues = [];
@@ -58,6 +90,14 @@ if ($search !== '') {
         $res->free();
     }
 }
+
+/* >>> ADD: จำกัดรายการสนามให้ตรงกับประเภทของ type_admin */
+if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
+    $venues = array_values(array_filter($venues, function($v) use ($TYPE_ADMIN_VTID) {
+        return (int)$v['VenueTypeID'] === $TYPE_ADMIN_VTID;
+    }));
+}
+// <<< END ADD
 
 function h($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 ?>
@@ -456,6 +496,18 @@ textarea.form-control-modern {
     </div>
 </div>
 
+<!-- >>> ADD: แถบแจ้งเตือนโหมด Type Admin -->
+<?php if ($IS_TYPE_ADMIN): ?>
+<div class="container-main">
+  <div class="alert alert-info alert-modern" role="alert" style="background:#e0f2fe;color:#075985;">
+    <i class="fas fa-shield-alt me-2"></i>
+    โหมด <strong>Type Admin</strong> — จัดการได้เฉพาะประเภทสนาม:
+    <strong><?= h($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) ?></strong>
+  </div>
+</div>
+<?php endif; ?>
+<!-- <<< END ADD -->
+
 <div class="container-main">
     <!-- Flash messages -->
     <?php if (!empty($_SESSION['flash_success'])): ?>
@@ -522,6 +574,11 @@ textarea.form-control-modern {
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <!-- >>> ADD: ถ้าเป็น type_admin ให้เตือนว่าถูกจำกัดประเภท -->
+                            <?php if ($IS_TYPE_ADMIN): ?>
+                              <small class="form-text-modern"><i class="fas fa-info-circle me-1"></i>คุณถูกจำกัดให้เลือกเฉพาะประเภท: <strong><?= h($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) ?></strong></small>
+                            <?php endif; ?>
+                            <!-- <<< END ADD -->
                         </div>
                         
                         <div class="row">
