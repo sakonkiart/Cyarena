@@ -12,6 +12,7 @@ $role     = $_SESSION['role'] ?? 'customer';
 
 /* ===== ADD: role helpers ===== */
 $isSuper = ($role === 'super_admin');
+$isAdmin = ($role === 'type_admin');
 $isStaff = ($role !== 'customer');
 
 // Avatar
@@ -1117,7 +1118,7 @@ body {
             <span class="promo-badge"><?php echo $activePromoCount; ?></span>
           <?php endif; ?>
         </a>
-      <?php elseif ($role === 'employee'): ?>
+      <?php elseif ($isAdmin): ?>
         <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
         <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
@@ -1129,7 +1130,6 @@ body {
         </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
       <?php elseif ($isSuper): ?>
-        <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
         <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
         <a href="promotion_manage.php" class="nav-link promo-link">
@@ -1152,8 +1152,13 @@ body {
         <div class="user-dropdown">
           <div class="dropdown-header">
             <div class="dropdown-header-name"><?php echo htmlspecialchars($userName); ?></div>
-            <div class="dropdown-header-role"><?php echo $role === 'customer' ? '👤 ลูกค้า' : '👨‍💼 พนักงาน'; ?></div>
-            <?php if ($isSuper): ?><div class="dropdown-header-role">👑 Super Admin</div><?php endif; ?>
+            <?php if ($isSuper): ?>
+              <div class="dropdown-header-role">👑 Super Admin</div>
+            <?php elseif ($isAdmin): ?>
+              <div class="dropdown-header-role">👨‍💼 Admin</div>
+            <?php else: ?>
+              <div class="dropdown-header-role">👤 ลูกค้า</div>
+            <?php endif; ?>
           </div>
           <a href="profile_edit.php" class="dropdown-item">✏️ แก้ไขโปรไฟล์</a>
           <?php if ($isSuper): ?>
@@ -1227,7 +1232,7 @@ body {
           <?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "ดูโปรโมชั่นทั้งหมด"; ?>
         </div>
       </div>
-    <?php elseif ($role === 'employee'): ?>
+    <?php elseif ($isAdmin): ?>
       <div class="action-card" onclick="window.location.href='bookings_calendar.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
         <div class="action-title">ปฏิทินการจอง</div>
@@ -1251,10 +1256,10 @@ body {
         <div class="action-title">ปฏิทินการจอง</div>
         <div class="action-desc">ดูตารางการจอง</div>
       </div>
-      <div class="action-card" onclick="window.location.href='manage_bookings.php'">
-        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🛠️</div>
-        <div class="action-title">จัดการจอง</div>
-        <div class="action-desc">อนุมัติ/ปฏิเสธการจอง</div>
+      <div class="action-card" onclick="window.location.href='admin_venues.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🏟️</div>
+        <div class="action-title">จัดการสนาม</div>
+        <div class="action-desc">เพิ่ม/แก้ไขสนาม</div>
       </div>
       <div class="action-card" onclick="window.location.href='promotion_manage.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
@@ -1509,23 +1514,6 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   });
 });
 </script>
-
-<?php
-// ✅ แสดงปุ่ม FAB เฉพาะ Superadmin เท่านั้น
-if ($isSuper): ?>
-  <a href="promotion_manage.php" class="fab-superadmin" title="จัดการโปรโมชั่น (เฉพาะ Super Admin)">
-    🎁 จัดการโปรโมชัน
-  </a>
-  <style>
-    .fab-superadmin{
-      position:fixed; right:24px; bottom:24px;
-      background:linear-gradient(135deg,#f59e0b,#d97706);
-      color:#fff; font-weight:700; padding:12px 16px; border-radius:999px;
-      box-shadow:0 10px 25px rgba(0,0,0,.2); text-decoration:none; z-index:9999;
-    }
-    .fab-superadmin:hover{ transform: translateY(-2px); box-shadow:0 14px 32px rgba(0,0,0,.28); }
-  </style>
-<?php endif; ?>
 
 </body>
 </html>
