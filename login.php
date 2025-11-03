@@ -1,95 +1,120 @@
 <?php
 session_start();
+
 // ตรวจสอบและรวมไฟล์เชื่อมต่อ
 if (!file_exists('db_connect.php')) {
     die("Fatal Error: ไม่พบไฟล์ db_connect.php กรุณาตรวจสอบการตั้งชื่อไฟล์.");
 }
-include 'db_connect.php'; // ไฟล์นี้ต้องกำหนดตัวแปร $conn
+include 'db_connect.php'; // ต้องกำหนด $conn (MySQLi)
 
 $message = "";
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = trim($_POST['username']);
-    $password_plain = trim($_POST['password']);
-    
-    // ตรวจสอบว่ามีการเชื่อมต่อ $conn สำเร็จหรือไม่
-    if (!isset($conn) || $conn->connect_error) {
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $username       = trim($_POST['username'] ?? '');
+    $password_plain = trim($_POST['password'] ?? '');
+
+    if ($username === '' || $password_plain === '') {
+        $message = "⚠️ กรุณากรอกชื่อผู้ใช้และรหัสผ่าน";
+    } elseif (!isset($conn) || $conn->connect_error) {
         $message = "❌ ไม่สามารถเชื่อมต่อฐานข้อมูลได้: " . ($conn->connect_error ?? "ตัวแปร \$conn ไม่ถูกกำหนดใน db_connect.php");
     } else {
-        $found = false;
 
-        // --- 1. ตรวจสอบลูกค้า ---
-        $sql_customer = "SELECT CustomerID AS ID, FirstName, Password, AvatarPath FROM Tbl_Customer WHERE Username = ?";
-        
-        $stmt = $conn->prepare($sql_customer);
-        if ($stmt === FALSE) {
-            // หาก Query ผิดพลาด (ชื่อตาราง/คอลัมน์ผิด)
-            $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (ลูกค้า): " . htmlspecialchars($conn->error);
-        } else {
+        // ===== 1) ลองล็อกอิน "พนักงาน/แอดมิน/ซุปเปอร์แอดมิน" ก่อน =====
+        $sql_emp = "
+            SELECT 
+                e.EmployeeID AS ID,
+                e.Username,
+                e.Password,
+                e.FirstName,
+                e.LastName,
+                COALESCE(r.RoleName, 'employee') AS RoleName
+            FROM Tbl_Employee e
+            LEFT JOIN Tbl_Role r ON r.RoleID = e.RoleID
+            WHERE e.Username = ?
+            LIMIT 1
+        ";
+        if ($stmt = $conn->prepare($sql_emp)) {
             $stmt->bind_param("s", $username);
             $stmt->execute();
-            $result = $stmt->get_result();
+            $emp_rs = $stmt->get_result();
 
-            if ($result->num_rows == 1) {
-                $row = $result->fetch_assoc();
-                if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
-                    $_SESSION['user_id'] = $row['ID'];
-                    $_SESSION['user_name'] = $row['FirstName'];
-                    $_SESSION['avatar_path'] = $row['AvatarPath'] ?? '';
-                    $_SESSION['role'] = 'customer';
+            if ($emp_rs && $emp_rs->num_rows === 1) {
+                $emp = $emp_rs->fetch_assoc();
+
+                $pass_ok = ($password_plain === $emp['Password']) || password_verify($password_plain, $emp['Password']);
+                if ($pass_ok) {
+                    $full_name = trim(($emp['FirstName'] ?? '') . ' ' . ($emp['LastName'] ?? ''));
+                    if ($full_name === '') $full_name = $emp['Username'];
+
+                    $_SESSION['user_id']    = (int)$emp['ID'];
+                    $_SESSION['user_name']  = $full_name;
+                    $_SESSION['avatar_path']= ''; // Tbl_Employee ปกติไม่มี Avatar
+                    // ทำให้แน่ใจว่าเป็นตัวพิมพ์เล็ก (กันเคสสะกดไม่ตรง)
+                    $role_name = strtolower($emp['RoleName'] ?? 'employee');
+                    $_SESSION['role'] = $role_name; // จะเป็น 'super_admin' ถ้าบทบาทตรงใน DB
+
                     $stmt->close();
                     $conn->close();
                     header("Location: dashboard.php");
                     exit;
                 } else {
+                    // ชื่อผู้ใช้เจอในฝั่งพนักงาน แต่รหัสผ่านผิด ⇒ ไม่ต้องไปเช็กลูกค้าต่อ
                     $message = "❌ รหัสผ่านไม่ถูกต้อง";
-                    $found = true;
+                    $stmt->close();
+                    $conn->close();
                 }
-            }
-            $stmt->close();
-        }
-
-
-        // --- 2. ตรวจสอบพนักงาน (ทำงานเมื่อไม่พบ/รหัสผ่านผิดของลูกค้า และยังไม่มีข้อผิดพลาด Query) ---
-        if (!$found && empty($message)) {
-            // แก้ไข: ลบคอลัมน์ AvatarPath ออกจาก Query ของพนักงาน
-            $sql_employee = "SELECT EmployeeID AS ID, FirstName, Password FROM Tbl_Employee WHERE Username = ?";
-            
-            $stmt = $conn->prepare($sql_employee);
-
-            if ($stmt === FALSE) {
-                // หาก Query ผิดพลาด (ชื่อตาราง/คอลัมน์ผิด)
-                $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (พนักงาน): " . htmlspecialchars($conn->error);
             } else {
-                $stmt->bind_param("s", $username);
-                $stmt->execute();
-                $result = $stmt->get_result();
-
-                if ($result->num_rows == 1) {
-                    $row = $result->fetch_assoc();
-                    if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
-                        $_SESSION['user_id'] = $row['ID'];
-                        $_SESSION['user_name'] = $row['FirstName'];
-                        // เนื่องจากลบ AvatarPath ออกจาก SELECT จึงต้องมั่นใจว่ามีการกำหนดค่าเริ่มต้น
-                        $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; // จะได้ค่าว่าง (nullish coalescing)
-                        $_SESSION['role'] = 'employee';
-                        $stmt->close();
-                        $conn->close();
-                        header("Location: dashboard.php");
-                        exit;
-                    } else {
-                        $message = "❌ รหัสผ่านไม่ถูกต้อง";
-                    }
-                } else {
-                    // หากไม่พบทั้งลูกค้าและพนักงาน
-                    $message = "⚠️ ไม่พบ Username นี้ในระบบ";
-                }
+                // ===== 2) ถ้าไม่พบในพนักงาน ลองเป็น "ลูกค้า" =====
                 $stmt->close();
+                $sql_cus = "
+                    SELECT 
+                        c.CustomerID AS ID,
+                        c.Username,
+                        c.Password,
+                        c.FirstName,
+                        c.LastName,
+                        c.AvatarPath
+                    FROM Tbl_Customer c
+                    WHERE c.Username = ?
+                    LIMIT 1
+                ";
+                if ($stmt2 = $conn->prepare($sql_cus)) {
+                    $stmt2->bind_param("s", $username);
+                    $stmt2->execute();
+                    $cus_rs = $stmt2->get_result();
+
+                    if ($cus_rs && $cus_rs->num_rows === 1) {
+                        $cus = $cus_rs->fetch_assoc();
+                        $pass_ok = ($password_plain === $cus['Password']) || password_verify($password_plain, $cus['Password']);
+
+                        if ($pass_ok) {
+                            $full_name = trim(($cus['FirstName'] ?? '') . ' ' . ($cus['LastName'] ?? ''));
+                            if ($full_name === '') $full_name = $cus['Username'];
+
+                            $_SESSION['user_id']    = (int)$cus['ID'];
+                            $_SESSION['user_name']  = $full_name;
+                            $_SESSION['avatar_path']= $cus['AvatarPath'] ?? '';
+                            $_SESSION['role']       = 'customer';
+
+                            $stmt2->close();
+                            $conn->close();
+                            header("Location: dashboard.php");
+                            exit;
+                        } else {
+                            $message = "❌ รหัสผ่านไม่ถูกต้อง";
+                        }
+                    } else {
+                        $message = "⚠️ ไม่พบ Username นี้ในระบบ";
+                    }
+                    $stmt2->close();
+                    $conn->close();
+                } else {
+                    $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (ลูกค้า): " . htmlspecialchars($conn->error);
+                    $conn->close();
+                }
             }
-        }
-        
-        if (isset($conn)) {
-            $conn->close();
+        } else {
+            $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (พนักงาน): " . htmlspecialchars($conn->error);
         }
     }
 }
@@ -102,165 +127,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <title>เข้าสู่ระบบ | CY Arena</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Kanit:wght@700;800&display=swap" rel="stylesheet">
 <style>
-:root {
-  --primary: #2563eb;
-  --primary-dark: #1e40af;
-  --primary-light: #3b82f6;
-  --gray-100: #f5f5f4;
-  --gray-700: #44403c;
-  --gray-900: #1c1917;
-  --danger: #dc2626;
-  --spacing: 1.5rem;
-  --error: #dc2626; 
-}
-
-body {
-  margin: 0;
-  font-family: 'Sarabun', sans-serif;
-  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  color: var(--gray-900);
-  padding: 1.5rem; 
-  box-sizing: border-box;
-}
-
-/* ===== CARD ===== */
-.login-card {
-  background: #fff;
-  border-radius: 20px;
-  padding: 2.5rem 2rem;
-  max-width: 420px; 
-  min-width: 300px; 
-  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-  animation: fadeIn 0.7s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ===== LOGO ===== */
-.logo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1.8rem;
-}
-
-.logo img {
-  width: 220px;
-  max-width: 80%;
-  height: auto;
-  display: block;
-  margin: 0 auto 10px auto;
-  transition: transform 0.3s ease, filter 0.3s ease;
-}
-
-.logo img:hover {
-  transform: scale(1.05);
-  filter: drop-shadow(0 0 8px rgba(37,99,235,0.3));
-}
-
-/* ===== FORM ===== */
-h2 {
-  text-align: center;
-  font-weight: 800;
-  font-family: 'Kanit', sans-serif;
-  color: var(--gray-900);
-  margin-bottom: 1rem;
-}
-p.desc {
-  text-align: center;
-  color: var(--gray-700);
-  margin-bottom: 2rem;
-}
-.form-group {
-  margin-bottom: 1.25rem;
-}
-label {
-  display: block;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-input {
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid var(--gray-100);
-  border-radius: 12px;
-  font-size: 1rem;
-  transition: all 0.3s;
-  box-sizing: border-box; 
-}
-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
-  outline: none;
-}
-
-/* ===== BUTTON ===== */
-.btn {
-  width: 100%;
-  padding: 1rem;
-  font-weight: 800;
-  font-family: 'Kanit', sans-serif;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-size: 1.125rem;
-}
-.btn-primary {
-  background: linear-gradient(135deg, var(--primary), var(--primary-light));
-  color: white;
-  box-shadow: 0 4px 12px rgba(37,99,235,0.4);
-}
-.btn-primary:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(37,99,235,0.6);
-}
-
-/* ===== MESSAGE & FOOTER ===== */
-.message {
-  margin-top: 1rem;
-  color: var(--error);
-  text-align: center;
-  font-weight: 700;
-  padding: 0.75rem;
-  border-radius: 8px;
-  background-color: rgba(220, 38, 38, 0.08); 
-  border: 1px solid var(--danger);
-}
-.footer-text {
-  text-align: center;
-  margin-top: 1.75rem;
-  color: var(--gray-700);
-  font-weight: 600;
-}
-.footer-text a {
-  color: var(--primary);
-  text-decoration: none;
-  font-weight: 700;
-}
-.footer-text a:hover { text-decoration: underline; }
-
-@media (max-width: 480px) {
-  body { padding: 0; } 
-  .login-card { 
-      width: 100vw; 
-      max-width: none;
-      border-radius: 0; 
-      padding: 2rem 1rem;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-  }
-  .logo img { width: 160px; margin-bottom: 8px; }
+:root { --primary:#2563eb; --primary-dark:#1e40af; --primary-light:#3b82f6; --gray-100:#f5f5f4; --gray-700:#44403c; --gray-900:#1c1917; --danger:#dc2626; --error:#dc2626; }
+body { margin:0; font-family:'Sarabun',sans-serif; background:linear-gradient(135deg,var(--primary-dark),var(--primary)); display:flex; align-items:center; justify-content:center; min-height:100vh; color:var(--gray-900); padding:1.5rem; box-sizing:border-box; }
+.login-card { background:#fff; border-radius:20px; padding:2.5rem 2rem; max-width:420px; min-width:300px; box-shadow:0 8px 24px rgba(0,0,0,0.2); animation:fadeIn 0.7s ease-out; }
+@keyframes fadeIn { from {opacity:0; transform:translateY(20px);} to {opacity:1; transform:translateY(0);} }
+.logo { display:flex; flex-direction:column; align-items:center; justify-content:center; margin-bottom:1.8rem; }
+.logo img { width:220px; max-width:80%; height:auto; display:block; margin:0 auto 10px auto; transition:transform 0.3s ease, filter 0.3s ease; }
+.logo img:hover { transform:scale(1.05); filter:drop-shadow(0 0 8px rgba(37,99,235,0.3)); }
+h2 { text-align:center; font-weight:800; font-family:'Kanit',sans-serif; color:var(--gray-900); margin-bottom:1rem; }
+p.desc { text-align:center; color:var(--gray-700); margin-bottom:2rem; }
+.form-group { margin-bottom:1.25rem; }
+label { display:block; font-weight:700; margin-bottom:0.5rem; }
+input { width:100%; padding:0.875rem 1rem; border:2px solid var(--gray-100); border-radius:12px; font-size:1rem; transition:all 0.3s; box-sizing:border-box; }
+input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,0.2); outline:none; }
+.btn { width:100%; padding:1rem; font-weight:800; font-family:'Kanit',sans-serif; border:none; border-radius:12px; cursor:pointer; transition:all 0.3s; font-size:1.125rem; }
+.btn-primary { background:linear-gradient(135deg,var(--primary),var(--primary-light)); color:#fff; box-shadow:0 4px 12px rgba(37,99,235,0.4); }
+.btn-primary:hover { transform:translateY(-3px); box-shadow:0 8px 20px rgba(37,99,235,0.6); }
+.message { margin-top:1rem; color:var(--error); text-align:center; font-weight:700; padding:0.75rem; border-radius:8px; background-color:rgba(220,38,38,0.08); border:1px solid var(--danger); }
+.footer-text { text-align:center; margin-top:1.75rem; color:var(--gray-700); font-weight:600; }
+.footer-text a { color:var(--primary); text-decoration:none; font-weight:700; }
+.footer-text a:hover { text-decoration:underline; }
+@media (max-width:480px) {
+  body { padding:0; }
+  .login-card { width:100vw; max-width:none; border-radius:0; padding:2rem 1rem; min-height:100vh; display:flex; flex-direction:column; justify-content:center; }
+  .logo img { width:160px; margin-bottom:8px; }
 }
 </style>
 </head>
