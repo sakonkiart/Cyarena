@@ -1,120 +1,119 @@
 <?php
 session_start();
-
-// ----- DB connect -----
-if (!file_exists('db_connect.php')) {
-    die("Fatal Error: ไม่พบไฟล์ db_connect.php");
-}
-include 'db_connect.php'; // ต้องมี $conn (mysqli)
+if (!file_exists('db_connect.php')) { die("Fatal Error: ไม่พบไฟล์ db_connect.php"); }
+include 'db_connect.php';                      // ต้องมี $conn (mysqli)
+if (function_exists('mysqli_set_charset')) { mysqli_set_charset($conn,'utf8mb4'); }
 
 $message = "";
 
+/** ปิดได้หลังตั้งค่าเรียบร้อย */
+define('BOOTSTRAP_SUPERADMIN', true);
+
+/** Debug ชั่วคราว: เปิดดูฐานที่เว็บกำลังใช้และจำนวน superadmin ได้ที่ /login.php?diag=1 */
+if (isset($_GET['diag']) && $_GET['diag']=='1') {
+  $db  = ($conn->query("SELECT DATABASE() db")->fetch_assoc()['db'] ?? '');
+  $t1  = ($conn->query("SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='Tbl_Employee'")->fetch_assoc()['c'] ?? 0);
+  $t2  = ($conn->query("SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='Tbl_Role'")->fetch_assoc()['c'] ?? 0);
+  $cnt = 0;
+  if ($t1) { $cnt = (int)($conn->query("SELECT COUNT(*) c FROM Tbl_Employee WHERE LOWER(Username)='superadmin'")->fetch_assoc()['c'] ?? 0); }
+  echo "<pre>DB=$db\nTbl_Employee=$t1 Tbl_Role=$t2\nrows(superadmin)=$cnt</pre>";
+  exit;
+}
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $username       = trim($_POST['username'] ?? '');
-    $password_plain = trim($_POST['password'] ?? '');
+  $username       = trim($_POST['username'] ?? '');
+  $password_plain = trim($_POST['password'] ?? '');
 
-    if ($username === '' || $password_plain === '') {
-        $message = "⚠️ กรุณากรอกชื่อผู้ใช้และรหัสผ่าน";
-    } elseif (!isset($conn) || $conn->connect_error) {
-        $message = "❌ เชื่อมต่อฐานข้อมูลไม่ได้: " . ($conn->connect_error ?? 'ตัวแปร $conn หาย');
-    } else {
+  if ($username === '' || $password_plain === '') {
+    $message = "⚠️ กรุณากรอกชื่อผู้ใช้และรหัสผ่าน";
+  } elseif (!isset($conn) || $conn->connect_error) {
+    $message = "❌ เชื่อมต่อฐานข้อมูลไม่ได้: " . ($conn->connect_error ?? 'ตัวแปร $conn หาย');
+  } else {
 
-        // ========= 1) พนักงาน/แอดมิน/ซุปเปอร์แอดมิน ก่อน =========
-        $sql_emp = "
-            SELECT 
-                e.EmployeeID AS ID,
-                e.Username,
-                e.Password,
-                COALESCE(r.RoleName,'employee') AS RoleName,
-                e.FirstName AS FirstName     -- << ไม่มี LastName แล้ว
-            FROM Tbl_Employee e
-            LEFT JOIN Tbl_Role r ON r.RoleID = e.RoleID
-            WHERE e.Username = ?
-            LIMIT 1
-        ";
-        if ($stmt = $conn->prepare($sql_emp)) {
-            $stmt->bind_param("s", $username);
-            $stmt->execute();
-            $emp_rs = $stmt->get_result();
-
-            if ($emp_rs && $emp_rs->num_rows === 1) {
-                $emp = $emp_rs->fetch_assoc();
-                $pass_ok = ($password_plain === $emp['Password']) || password_verify($password_plain, $emp['Password']);
-
-                if ($pass_ok) {
-                    $displayName = trim($emp['FirstName'] ?? '');
-                    if ($displayName === '') $displayName = $emp['Username'];
-
-                    $_SESSION['user_id']     = (int)$emp['ID'];
-                    $_SESSION['user_name']   = $displayName;
-                    $_SESSION['avatar_path'] = ''; // Tbl_Employee ปกติไม่มี Avatar
-                    $_SESSION['role']        = strtolower($emp['RoleName'] ?? 'employee'); // จะได้ 'super_admin' ถ้าตั้งใน DB
-
-                    $stmt->close();
-                    $conn->close();
-                    header("Location: dashboard.php");
-                    exit;
-                } else {
-                    $message = "❌ รหัสผ่านไม่ถูกต้อง";
-                    $stmt->close();
-                    $conn->close();
-                }
-            } else {
-                // ========= 2) ถ้าไม่พบในพนักงาน ลองลูกค้า =========
-                $stmt->close();
-
-                $sql_cus = "
-                    SELECT 
-                        c.CustomerID AS ID,
-                        c.Username,
-                        c.Password,
-                        c.FirstName,
-                        c.AvatarPath
-                    FROM Tbl_Customer c
-                    WHERE c.Username = ?
-                    LIMIT 1
-                ";
-                if ($stmt2 = $conn->prepare($sql_cus)) {
-                    $stmt2->bind_param("s", $username);
-                    $stmt2->execute();
-                    $cus_rs = $stmt2->get_result();
-
-                    if ($cus_rs && $cus_rs->num_rows === 1) {
-                        $cus = $cus_rs->fetch_assoc();
-                        $pass_ok = ($password_plain === $cus['Password']) || password_verify($password_plain, $cus['Password']);
-
-                        if ($pass_ok) {
-                            $displayName = trim($cus['FirstName'] ?? '');
-                            if ($displayName === '') $displayName = $cus['Username'];
-
-                            $_SESSION['user_id']     = (int)$cus['ID'];
-                            $_SESSION['user_name']   = $displayName;
-                            $_SESSION['avatar_path'] = $cus['AvatarPath'] ?? '';
-                            $_SESSION['role']        = 'customer';
-
-                            $stmt2->close();
-                            $conn->close();
-                            header("Location: dashboard.php");
-                            exit;
-                        } else {
-                            $message = "❌ รหัสผ่านไม่ถูกต้อง";
-                        }
-                    } else {
-                        $message = "⚠️ ไม่พบ Username นี้ในระบบ";
-                    }
-                    $stmt2->close();
-                    $conn->close();
-                } else {
-                    $message = "❌ Query (ลูกค้า) ผิดพลาด: " . htmlspecialchars($conn->error);
-                    $conn->close();
-                }
-            }
-        } else {
-            $message = "❌ Query (พนักงาน) ผิดพลาด: " . htmlspecialchars($conn->error);
-        }
+    /* ===== Bootstrap superadmin อัตโนมัติถ้ายังไม่มี ===== */
+    if (BOOTSTRAP_SUPERADMIN && strtolower($username) === 'superadmin' && $password_plain === '1234') {
+      $conn->query("INSERT INTO Tbl_Role (RoleName)
+                    SELECT 'super_admin' WHERE NOT EXISTS
+                    (SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')");
+      $conn->query("SET @rid := (SELECT RoleID FROM Tbl_Role WHERE RoleName='super_admin' LIMIT 1)");
+      // แทรกเฉพาะคอลัมน์ที่น่าจะมีแน่ ๆ
+      $conn->query("INSERT INTO Tbl_Employee (Username, Password, RoleID)
+                    SELECT 'superadmin','1234', @rid
+                    WHERE NOT EXISTS (SELECT 1 FROM Tbl_Employee WHERE LOWER(Username)='superadmin')");
     }
+
+    $found = false;
+
+    /* ===== ตรวจพนักงาน/แอดมิน/ซุปเปอร์แอดมิน (case-insensitive) ===== */
+    $sql_emp = "SELECT e.EmployeeID AS ID, e.Username, e.Password,
+                       COALESCE(r.RoleName,'employee') AS RoleName
+                FROM Tbl_Employee e
+                LEFT JOIN Tbl_Role r ON r.RoleID = e.RoleID
+                WHERE LOWER(e.Username) = LOWER(?)
+                LIMIT 1";
+    if ($stmt = $conn->prepare($sql_emp)) {
+      $stmt->bind_param("s", $username);
+      $stmt->execute();
+      $rs = $stmt->get_result();
+
+      if ($rs && $rs->num_rows === 1) {
+        $row = $rs->fetch_assoc();
+        $ok  = ($password_plain === $row['Password']) || password_verify($password_plain, $row['Password']);
+        if ($ok) {
+          $_SESSION['user_id']     = (int)$row['ID'];
+          $_SESSION['user_name']   = $row['Username'];  // ใช้ Username เป็นชื่อแสดงผล
+          $_SESSION['avatar_path'] = '';
+          $_SESSION['role']        = strtolower($row['RoleName'] ?? 'employee'); // คาดหวัง super_admin
+          $stmt->close(); $conn->close();
+          header("Location: dashboard.php"); exit;
+        } else {
+          $message = "❌ รหัสผ่านไม่ถูกต้อง";
+          $found = true;
+        }
+      }
+      $stmt->close();
+    } else {
+      $message = "❌ Query (พนักงาน) ไม่ถูกต้อง: " . htmlspecialchars($conn->error);
+    }
+
+    /* ===== ถ้าไม่ใช่พนักงาน ลองลูกค้า ===== */
+    if (!$found && empty($message)) {
+      $sql_cus = "SELECT c.CustomerID AS ID, c.Username, c.Password
+                  FROM Tbl_Customer c
+                  WHERE LOWER(c.Username) = LOWER(?)
+                  LIMIT 1";
+      if ($stmt2 = $conn->prepare($sql_cus)) {
+        $stmt2->bind_param("s", $username);
+        $stmt2->execute();
+        $rs2 = $stmt2->get_result();
+
+        if ($rs2 && $rs2->num_rows === 1) {
+          $row = $rs2->fetch_assoc();
+          $ok  = ($password_plain === $row['Password']) || password_verify($password_plain, $row['Password']);
+          if ($ok) {
+            $_SESSION['user_id']     = (int)$row['ID'];
+            $_SESSION['user_name']   = $row['Username'];
+            $_SESSION['avatar_path'] = '';
+            $_SESSION['role']        = 'customer';
+            $stmt2->close(); $conn->close();
+            header("Location: dashboard.php"); exit;
+          } else {
+            $message = "❌ รหัสผ่านไม่ถูกต้อง";
+          }
+        } else {
+          $message = "⚠️ ไม่พบ Username นี้ในระบบ";
+        }
+        $stmt2->close();
+      } else {
+        if ($message === "") $message = "❌ Query (ลูกค้า) ไม่ถูกต้อง: " . htmlspecialchars($conn->error);
+      }
+    }
+
+    if (isset($conn) && $conn instanceof mysqli) { $conn->close(); }
+  }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="th">
 <head>
