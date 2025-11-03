@@ -87,23 +87,12 @@ if ($__rc = $conn->query($readySql)) {
     $readyCount = (int) ((($__rc->fetch_assoc())['c'] ?? 0));
 }
 
-// ดึงจำนวนโปรโมชั่นที่ใช้งานได้ (สำหรับ Employee)
+// ✅ นับจำนวนโปรโมชั่นที่ใช้งานได้สำหรับทุกคน
 $activePromoCount = 0;
-if ($isSuper) {
-    $promoSql = "SELECT COUNT(*) as count FROM Tbl_Promotion WHERE NOW() BETWEEN StartDate AND EndDate";
-    $promoRes = $conn->query($promoSql);
-    if ($promoRes) {
-        $activePromoCount = $promoRes->fetch_assoc()['count'];
-    }
-}
-
-/* ===== ADD: นับโปรให้ super_admin ด้วย ===== */
-if ($role === 'super_admin' && $activePromoCount == 0) {
-    $promoSql2 = "SELECT COUNT(*) as count FROM Tbl_Promotion WHERE NOW() BETWEEN StartDate AND EndDate";
-    $promoRes2 = $conn->query($promoSql2);
-    if ($promoRes2) {
-        $activePromoCount = $promoRes2->fetch_assoc()['count'];
-    }
+$promoSql = "SELECT COUNT(*) as count FROM Tbl_Promotion WHERE NOW() BETWEEN StartDate AND EndDate";
+$promoRes = $conn->query($promoSql);
+if ($promoRes) {
+    $activePromoCount = $promoRes->fetch_assoc()['count'];
 }
 
 $conn->close();
@@ -1122,8 +1111,24 @@ body {
         <a href="my_bookings.php" class="nav-link">📋 การจองของฉัน</a>
         <a href="bookings_calendar_public.php" class="nav-link">📅 ปฏิทินสนาม</a>
         <a href="my_reviews.php" class="nav-link">⭐ รีวิวของฉัน</a>
-        <a href="promotion.php" class="nav-link promo-link">🎁 โปรโมชั่น</a>
-      <?php else: ?>
+        <a href="promotion.php" class="nav-link promo-link">
+          🎁 โปรโมชั่น
+          <?php if ($activePromoCount > 0): ?>
+            <span class="promo-badge"><?php echo $activePromoCount; ?></span>
+          <?php endif; ?>
+        </a>
+      <?php elseif ($role === 'employee'): ?>
+        <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
+        <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
+        <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
+        <a href="promotion.php" class="nav-link promo-link">
+          🎁 โปรโมชั่น
+          <?php if ($activePromoCount > 0): ?>
+            <span class="promo-badge"><?php echo $activePromoCount; ?></span>
+          <?php endif; ?>
+        </a>
+        <a href="report.php" class="nav-link">📊 รายงาน</a>
+      <?php elseif ($isSuper): ?>
         <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
         <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
@@ -1134,10 +1139,7 @@ body {
           <?php endif; ?>
         </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
-        <!-- ADD: ปุ่มเฉพาะ super admin -->
-        <?php if ($isSuper): ?>
-          <a href="super_admin_grant.php" class="nav-link">👑 ให้สิทธิ์ผู้ใช้</a>
-        <?php endif; ?>
+        <a href="super_admin_grant.php" class="nav-link">👑 ให้สิทธิ์ผู้ใช้</a>
       <?php endif; ?>
     </nav>
     
@@ -1154,7 +1156,6 @@ body {
             <?php if ($isSuper): ?><div class="dropdown-header-role">👑 Super Admin</div><?php endif; ?>
           </div>
           <a href="profile_edit.php" class="dropdown-item">✏️ แก้ไขโปรไฟล์</a>
-          <!-- ADD: ทางลัดไปหน้าให้สิทธิ์ -->
           <?php if ($isSuper): ?>
             <a href="super_admin_grant.php" class="dropdown-item">👑 ให้สิทธิ์ผู้ใช้</a>
           <?php endif; ?>
@@ -1168,7 +1169,7 @@ body {
 <!-- ========== PROMO BAR ========== -->
 <div class="promo-bar">
   <div class="promo-content">
-    <span class="promo-text">⚽ โปรพิเศษ! ลด 20% ทุกวันธรรมดา 🏀 จองครบ 3 ชม. ฟรี 1 ชม. 🎾 สมาชิกใหม่ลดทันที 50 บาท 🏸 โปรศุกร์-เสาร์-อาทิตย์ ลดสูงสุด 30% 🏓 จองออนไลน์รับคะแนนสะสม ⚾ แนะนำเพื่อนรับส่วนลดเพิ่ม</span>
+    <span class="promo-text">⚽ โปรพิเศษ! ลด 20% ทุกวันธรรมดา 🏀 จองครบ 3 ชม. ฟรี 1 ชม. 🎾 สมาชิกใหม่ลดทันที 50 บาท 🏸 โปรศุกร์-เสาร์-อาทิตย์ ลดสูงสุด 30% 🏐 จองออนไลน์รับคะแนนสะสม ⚾ แนะนำเพื่อนรับส่วนลดเพิ่ม</span>
   </div>
 </div>
 
@@ -1222,9 +1223,29 @@ body {
       <div class="action-card" onclick="window.location.href='promotion.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
         <div class="action-title">โปรโมชั่นพิเศษ</div>
-        <div class="action-desc">ดูโปรโมชั่นทั้งหมด</div>
+        <div class="action-desc">
+          <?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "ดูโปรโมชั่นทั้งหมด"; ?>
+        </div>
       </div>
-    <?php else: ?>
+    <?php elseif ($role === 'employee'): ?>
+      <div class="action-card" onclick="window.location.href='bookings_calendar.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
+        <div class="action-title">ปฏิทินการจอง</div>
+        <div class="action-desc">ดูตารางการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='manage_bookings.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🛠️</div>
+        <div class="action-title">จัดการจอง</div>
+        <div class="action-desc">อนุมัติ/ปฏิเสธการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='promotion.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
+        <div class="action-title">โปรโมชั่น</div>
+        <div class="action-desc">
+          <?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "ดูโปรโมชั่นทั้งหมด"; ?>
+        </div>
+      </div>
+    <?php elseif ($isSuper): ?>
       <div class="action-card" onclick="window.location.href='bookings_calendar.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
         <div class="action-title">ปฏิทินการจอง</div>
@@ -1242,14 +1263,11 @@ body {
           <?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "สร้างโปรโมชั่นใหม่"; ?>
         </div>
       </div>
-      <!-- ADD: การ์ดให้สิทธิ์ผู้ใช้ เฉพาะ super admin -->
-      <?php if ($isSuper): ?>
       <div class="action-card" onclick="window.location.href='super_admin_grant.php'">
         <div class="action-icon" style="background: linear-gradient(135deg,#a855f7 0%,#8b5cf6 100%);">👑</div>
         <div class="action-title">ให้สิทธิ์ผู้ใช้</div>
         <div class="action-desc">อัปเกรด/ลดสิทธิ์พนักงาน</div>
       </div>
-      <?php endif; ?>
     <?php endif; ?>
   </div>
 </section>
@@ -1492,14 +1510,9 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 });
 </script>
 
-    <?php
-// >>> ADD-ONLY (dashboard.php): show Promo Manage quick button for super admin only
-if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
-$__ROLE = $_SESSION['role'] ?? '';
-$__IS_SUPER = in_array($__ROLE, ['superadmin', 'super_admin', 'super']);
-?>
-
-<?php if ($__IS_SUPER): ?>
+<?php
+// ✅ แสดงปุ่ม FAB เฉพาะ Superadmin เท่านั้น
+if ($isSuper): ?>
   <a href="promotion_manage.php" class="fab-superadmin" title="จัดการโปรโมชั่น (เฉพาะ Super Admin)">
     🎁 จัดการโปรโมชัน
   </a>
@@ -1512,14 +1525,7 @@ $__IS_SUPER = in_array($__ROLE, ['superadmin', 'super_admin', 'super']);
     }
     .fab-superadmin:hover{ transform: translateY(-2px); box-shadow:0 14px 32px rgba(0,0,0,.28); }
   </style>
-<?php else: ?>
-  <!-- ซ่อนลิงก์ไปหน้าโปรโมชั่นสำหรับ non-superadmin แบบไม่ต้องแก้ HTML เดิม -->
-  <style>
-    a[href*="promotion_manage.php"],
-    a[href*="promotion.php"] { display:none !important; }
-  </style>
 <?php endif; ?>
-
 
 </body>
 </html>
