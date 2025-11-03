@@ -1,5 +1,6 @@
 <?php
 // booking_confirmation_trigger.php
+// สคริปต์นี้มีไว้เพื่อส่งอีเมลยืนยันการจองทันทีเมื่อลูกค้าทำการจองสำเร็จ
 
 // -------------------------------------------------------------------
 // 1. การตรวจสอบความปลอดภัยและการรับ BookingID
@@ -74,7 +75,7 @@ function sendConfirmationEmail($conn, $recipientEmail, $recipientName, $startTim
         
         return true;
     } catch (Exception $e) {
-        error_log("Mailer Error for Booking #{$bookingID}: {$mail->ErrorInfo}");
+        error_log("Mailer Error (Confirmation) for Booking #{$bookingID}: {$mail->ErrorInfo}");
         return false;
     }
 }
@@ -101,9 +102,26 @@ $sql = "
     LIMIT 1;
 ";
 
+// เตรียมคำสั่ง SQL
 $stmt = $conn->prepare($sql);
+
+if ($stmt === false) {
+    // บันทึกข้อผิดพลาดหาก prepare ล้มเหลว
+    error_log("Confirmation SELECT Prepare Error: " . $conn->error);
+    http_response_code(500);
+    die("Internal Server Error: Database prepare failed.");
+}
+
 $stmt->bind_param("i", $bookingID);
-$stmt->execute();
+
+// รันคำสั่ง SQL
+if (!$stmt->execute()) {
+    // บันทึกข้อผิดพลาดหาก execute ล้มเหลว
+    error_log("Confirmation SELECT Execute Error for ID {$bookingID}: " . $stmt->error);
+    http_response_code(500);
+    die("Internal Server Error: Database execute failed.");
+}
+
 $result = $stmt->get_result();
 
 if ($result && $result->num_rows > 0) {
@@ -121,5 +139,6 @@ if ($result && $result->num_rows > 0) {
     echo "No valid booking found for ID: {$bookingID}.";
 }
 
+$stmt->close();
 $conn->close();
 ?>
