@@ -1,235 +1,156 @@
 <?php
 // super_admin_grant.php
 session_start();
-require_once 'db_connect.php';
-
-// ====== 0) ตรวจสิทธิ์ ต้องเป็น SUPER ADMIN ======
-if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'super_admin') {
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
+if (($_SESSION['role'] ?? '') !== 'super_admin') {
     http_response_code(403);
-    die('Forbidden: Super Admin only.');
+    echo "403 Forbidden – ต้องเป็น super_admin เท่านั้น";
+    exit;
 }
 
-$errors = [];
-$success = '';
+if (!file_exists('db_connect.php')) {
+    die("Fatal Error: ไม่พบไฟล์ db_connect.php");
+}
+include 'db_connect.php';
+@$conn->query("SET time_zone = '+07:00'");
 
-// โหลดข้อมูล dropdown
-function fetchAll($conn, $sql, $types = '', ...$params) {
-    $stmt = $conn->prepare($sql);
-    if ($types) $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $rows = $res->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    return $rows;
+$message = "";
+
+/* ===== Ensure roles exist ===== */
+@$conn->query("
+  INSERT INTO Tbl_Role (RoleName)
+  SELECT 'employee' FROM DUAL
+  WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='employee')
+");
+@$conn->query("
+  INSERT INTO Tbl_Role (RoleName)
+  SELECT 'super_admin' FROM DUAL
+  WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')
+");
+
+/* Get Role map */
+$roles = [];
+if ($rs = $conn->query("SELECT RoleID, RoleName FROM Tbl_Role ORDER BY RoleName")) {
+  while ($r = $rs->fetch_assoc()) { $roles[$r['RoleName']] = (int)$r['RoleID']; }
+  $rs->close();
 }
 
-$customers = fetchAll($conn, "SELECT CustomerID, FirstName, LastName, Email FROM Tbl_Customer ORDER BY FirstName, LastName");
-$employees = fetchAll($conn, "SELECT EmployeeID, FirstName, LastName, Username, RoleID FROM Tbl_Employee ORDER BY FirstName, LastName");
-$roles     = fetchAll($conn, "SELECT RoleID, RoleName FROM Tbl_Role");
-$roleMap   = [];
-foreach ($roles as $r) $roleMap[$r['RoleName']] = (int)$r['RoleID'];
+/* Handle POST: update role */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['employee_id'], $_POST['role_name'])) {
+    $empId     = (int)$_POST['employee_id'];
+    $roleName  = trim($_POST['role_name']);
 
-$venueTypes = fetchAll($conn, "SELECT VenueTypeID, TypeName FROM Tbl_Venue_Type ORDER BY TypeName");
-
-// โหลดสนามสำหรับประเภทที่เลือก (ถ้า POST/GET มีค่า)
-$selectedVenueType = (int)($_POST['VenueTypeID'] ?? $_GET['VenueTypeID'] ?? 0);
-$venues = $selectedVenueType
-    ? fetchAll($conn, "SELECT VenueID, VenueName FROM Tbl_Venue WHERE VenueTypeID = ? ORDER BY VenueName", "i", $selectedVenueType)
-    : [];
-
-// ====== 1) เมื่อกด Grant ======
-if (isset($_POST['action']) && $_POST['action'] === 'grant') {
-    $grantedByEmpId = (int)($_SESSION['employee_id'] ?? 0); // แนะนำให้เก็บไว้ใน session ตอนล็อกอินแอดมิน
-    if ($grantedByEmpId <= 0) $errors[] = 'ไม่พบ EmployeeID ของผู้ให้สิทธิ์ใน session';
-
-    $customerId = (int)($_POST['CustomerID'] ?? 0);
-    $employeeId = (int)($_POST['EmployeeID'] ?? 0);
-    $venueTypeId = (int)($_POST['VenueTypeID'] ?? 0);
-    $allowedVenues = array_map('intval', $_POST['AllowedVenues'] ?? []);
-
-    if ($venueTypeId <= 0) $errors[] = 'กรุณาเลือกประเภทกีฬา';
-    if (empty($allowedVenues)) $errors[] = 'กรุณาเลือกอย่างน้อย 1 สนาม';
-
-    // หา RoleID ของ admin / super_admin
-    $adminRoleId = $roleMap['admin'] ?? null;
-    if (!$adminRoleId) $errors[] = 'ไม่พบ Role "admin"';
-
-    if (!$errors) {
-        $conn->begin_transaction();
-        try {
-            // 1. ถ้าเลือกจาก Customer → สร้าง/อัปเดต Employee ที่ผูกกับ Customer
-            if ($customerId > 0 && $employeeId === 0) {
-                // ค้นลูกค้า
-                $stmt = $conn->prepare("SELECT FirstName, LastName, Email FROM Tbl_Customer WHERE CustomerID = ?");
-                $stmt->bind_param("i", $customerId);
-                $stmt->execute(); $cust = $stmt->get_result()->fetch_assoc(); $stmt->close();
-                if (!$cust) throw new Exception('ไม่พบบัญชีลูกค้า');
-
-                // มี employee record ที่ลิงก์ลูกค้านี้อยู่แล้วไหม
-                $stmt = $conn->prepare("SELECT EmployeeID FROM Tbl_Employee WHERE CustomerID = ?");
-                $stmt->bind_param("i", $customerId);
-                $stmt->execute(); $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
-
-                if ($row) {
-                    $employeeId = (int)$row['EmployeeID'];
-                    // อัปเดตให้เป็น admin
-                    $stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID = ? WHERE EmployeeID = ?");
-                    $stmt->bind_param("ii", $adminRoleId, $employeeId);
-                    $stmt->execute(); $stmt->close();
-                } else {
-                    // สร้าง employee ใหม่จากข้อมูลลูกค้า (สุ่มรหัสผ่านชั่วคราว)
-                    $tmpPass = bin2hex(random_bytes(6));
-                    $username = $cust['Email']; // ใช้อีเมลเป็น username
-                    $stmt = $conn->prepare("
-                        INSERT INTO Tbl_Employee (FirstName, LastName, Phone, RoleID, Username, Password, CustomerID)
-                        VALUES (?, ?, '', ?, ?, ?, ?)
-                    ");
-                    // แนะนำ: เปลี่ยน Password ให้เป็น hash ในภายหลัง (admin เปลี่ยนเอง)
-                    $stmt->bind_param("ssiisi",
-                        $cust['FirstName'], $cust['LastName'], $adminRoleId, $username, $tmpPass, $customerId
-                    );
-                    $stmt->execute();
-                    $employeeId = $stmt->insert_id;
-                    $stmt->close();
-                }
-            }
-
-            // 2. ถ้าเลือก Employee โดยตรง → อัปเดตบทบาทให้เป็น admin
-            if ($employeeId > 0) {
-                $stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID = ? WHERE EmployeeID = ?");
-                $stmt->bind_param("ii", $adminRoleId, $employeeId);
-                $stmt->execute(); $stmt->close();
+    if (!isset($roles[$roleName])) {
+        $message = "❌ ไม่พบสิทธิ์ที่เลือก";
+    } else {
+        $rid = $roles[$roleName];
+        // กันไม่ให้ลดสิทธิ์ตัวเองพลาด
+        if ($empId === (int)$_SESSION['user_id'] && $roleName !== 'super_admin') {
+            $message = "⚠️ ห้ามเปลี่ยนสิทธิ์ของตัวเองเป็นอย่างอื่นนอกจาก super_admin";
+        } else {
+            $stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID=? WHERE EmployeeID=?");
+            $stmt->bind_param("ii", $rid, $empId);
+            if ($stmt->execute()) {
+                $message = "✅ อัปเดตสิทธิ์สำเร็จ";
             } else {
-                throw new Exception('ไม่พบ Employee ที่จะให้สิทธิ์');
-            }
-
-            // 3. Upsert Assignment (หนึ่งคนต่อหนึ่งประเภท)
-            //    ถ้ามีอยู่แล้วจะอัปเดตประเภทกีฬาใหม่ และจะเคลียร์สนามที่เคยเลือก
-            $stmt = $conn->prepare("
-                INSERT INTO Tbl_Admin_Assignment (EmployeeID, VenueTypeID, GrantedByEmpID)
-                VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE VenueTypeID = VALUES(VenueTypeID), GrantedByEmpID = VALUES(GrantedByEmpID), GrantedAt = CURRENT_TIMESTAMP
-            ");
-            $stmt->bind_param("iii", $employeeId, $venueTypeId, $grantedByEmpId);
-            $stmt->execute(); $stmt->close();
-
-            // 4. เคลียร์รายการสนามเดิม แล้วใส่ชุดใหม่ (Trigger จะบล็อกกรณีเลือกผิดประเภท)
-            $stmt = $conn->prepare("DELETE FROM Tbl_Admin_Allowed_Venue WHERE EmployeeID = ?");
-            $stmt->bind_param("i", $employeeId);
-            $stmt->execute(); $stmt->close();
-
-            $stmt = $conn->prepare("INSERT INTO Tbl_Admin_Allowed_Venue (EmployeeID, VenueID) VALUES (?, ?)");
-            foreach ($allowedVenues as $vid) {
-                $stmt->bind_param("ii", $employeeId, $vid);
-                $stmt->execute();
+                $message = "❌ อัปเดตไม่สำเร็จ: " . htmlspecialchars($conn->error);
             }
             $stmt->close();
-
-            $conn->commit();
-            $success = "ให้สิทธิ์สำเร็จ: Admin #{$employeeId} ดูแลประเภทกีฬา {$venueTypeId} และสนามที่เลือกแล้ว";
-        } catch (Throwable $e) {
-            $conn->rollback();
-            $errors[] = $e->getMessage();
         }
     }
 }
 
-// ====== ฟังก์ชันช่วยดึงชื่อ role (สวยงามเวลาแสดงผล) ======
-function roleName($roleId, $roles) {
-    foreach ($roles as $r) if ((int)$r['RoleID'] === (int)$roleId) return $r['RoleName'];
-    return 'unknown';
+/* Load employees (ไม่อ้างอิง LastName) */
+$employees = [];
+$sql = "
+  SELECT e.EmployeeID, e.FirstName, e.Username,
+         COALESCE(r.RoleName,'employee') AS RoleName
+  FROM Tbl_Employee e
+  LEFT JOIN Tbl_Role r ON e.RoleID = r.RoleID
+  ORDER BY e.EmployeeID
+";
+if ($res = $conn->query($sql)) {
+    $employees = $res->fetch_all(MYSQLI_ASSOC);
+    $res->close();
 }
 ?>
 <!DOCTYPE html>
 <html lang="th">
 <head>
-<meta charset="utf-8">
-<title>Grant Admin (Super Admin)</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>มอบสิทธิ์ผู้ดูแลระบบสูงสุด</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body{font-family:system-ui,Segoe UI,Arial;padding:16px;max-width:900px;margin:auto}
-fieldset{margin-bottom:16px}
-label{display:block;margin:8px 0 4px}
-select,button{padding:8px}
-.success{background:#e8fff1;border:1px solid #38b000;padding:10px;margin-bottom:10px}
-.error{background:#fff1f1;border:1px solid #d00000;padding:10px;margin-bottom:10px}
-table{border-collapse:collapse;width:100%}
-td,th{border:1px solid #ddd;padding:6px}
+body{font-family:'Sarabun',sans-serif;background:#f6f7fb;margin:0;padding:24px;color:#0f172a}
+h1{margin:0 0 16px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.05);padding:16px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.85rem;font-weight:700}
+.badge.sa{background:#1d4ed8;color:#fff}
+.badge.emp{background:#10b981;color:#064e3b}
+.actions{display:flex;gap:8px}
+.btn{border:none;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
+.btn.sa{background:#1d4ed8;color:#fff}
+.btn.emp{background:#10b981;color:#fff}
+.msg{margin:12px 0 16px;padding:10px 12px;border-radius:10px;border:1px solid #e5e7eb;background:#f8fafc}
+.small{color:#64748b;font-size:.9rem}
 </style>
 </head>
 <body>
+  <h1>มอบสิทธิ์ผู้ดูแลระบบสูงสุด (super_admin)</h1>
+  <div class="small">เฉพาะบัญชีที่เข้าสู่ระบบด้วยสิทธิ์ <b>super_admin</b> เท่านั้นที่เข้าหน้านี้ได้</div>
 
-<h2>Grant สิทธิ์ Admin (เฉพาะ Super Admin)</h2>
+  <?php if ($message): ?>
+    <div class="msg"><?= htmlspecialchars($message) ?></div>
+  <?php endif; ?>
 
-<?php if ($success): ?><div class="success"><?=htmlspecialchars($success)?></div><?php endif; ?>
-<?php foreach ($errors as $er): ?><div class="error"><?=htmlspecialchars($er)?></div><?php endforeach; ?>
-
-<form method="post">
-  <fieldset>
-    <legend>เลือกผู้รับสิทธิ์</legend>
-    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <div>
-        <label>จากลูกค้า (โปรโมตเป็นแอดมิน)</label>
-        <select name="CustomerID">
-          <option value="0">-- ไม่เลือก --</option>
-          <?php foreach ($customers as $c): ?>
-            <option value="<?=$c['CustomerID']?>"><?=htmlspecialchars($c['FirstName'].' '.$c['LastName'].' ('.$c['Email'].')')?></option>
-          <?php endforeach; ?>
-        </select>
-        <div style="font-size:12px;color:#666">ถ้าเลือกตรงนี้ ไม่ต้องเลือก Employee ด้านขวา</div>
-      </div>
-
-      <div>
-        <label>หรือเลือกพนักงานที่มีอยู่</label>
-        <select name="EmployeeID">
-          <option value="0">-- ไม่เลือก --</option>
-          <?php foreach ($employees as $e): ?>
-            <option value="<?=$e['EmployeeID']?>">
-              <?=htmlspecialchars($e['FirstName'].' '.$e['LastName'].' ('.$e['Username'].') [role='.roleName($e['RoleID'],$roles).']')?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-        <div style="font-size:12px;color:#666">ถ้าเลือกตรงนี้ ไม่ต้องเลือก Customer</div>
-      </div>
-    </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>กำหนดประเภทกีฬา + เลือกสนามที่ดูแล</legend>
-    <label>ประเภทกีฬา</label>
-    <select name="VenueTypeID" onchange="this.form.submit()">
-      <option value="0">-- เลือกประเภทกีฬา --</option>
-      <?php foreach ($venueTypes as $vt): ?>
-        <option value="<?=$vt['VenueTypeID']?>" <?= $selectedVenueType===$vt['VenueTypeID']?'selected':''?>>
-          <?=htmlspecialchars($vt['TypeName'])?>
-        </option>
-      <?php endforeach; ?>
-    </select>
-
-    <label style="margin-top:10px">สนามที่อนุญาต (กด Ctrl/Shift เพื่อเลือกหลายรายการ)</label>
-    <select name="AllowedVenues[]" multiple size="8" style="min-width:360px">
-      <?php foreach ($venues as $v): ?>
-        <option value="<?=$v['VenueID']?>"><?=htmlspecialchars($v['VenueName'])?></option>
-      <?php endforeach; ?>
-    </select>
-  </fieldset>
-
-  <input type="hidden" name="action" value="grant">
-  <button type="submit">ให้สิทธิ์</button>
-</form>
-
-<hr>
-<h3>ตัวอย่างพนักงานที่มีอยู่</h3>
-<table>
-  <tr><th>ID</th><th>ชื่อ</th><th>Username</th><th>Role</th></tr>
-  <?php foreach ($employees as $e): ?>
-  <tr>
-    <td><?=$e['EmployeeID']?></td>
-    <td><?=htmlspecialchars($e['FirstName'].' '.$e['LastName'])?></td>
-    <td><?=htmlspecialchars($e['Username'])?></td>
-    <td><?=htmlspecialchars(roleName($e['RoleID'],$roles))?></td>
-  </tr>
-  <?php endforeach; ?>
-</table>
-
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>ชื่อ (FirstName)</th>
+          <th>Username</th>
+          <th>สิทธิ์ปัจจุบัน</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+      <?php if (!$employees): ?>
+        <tr><td colspan="5">ยังไม่มีพนักงาน</td></tr>
+      <?php else: foreach ($employees as $emp): ?>
+        <tr>
+          <td><?= (int)$emp['EmployeeID'] ?></td>
+          <td><?= htmlspecialchars($emp['FirstName'] ?: '-') ?></td>
+          <td><?= htmlspecialchars($emp['Username'] ?: '-') ?></td>
+          <td>
+            <?php if (($emp['RoleName'] ?? 'employee') === 'super_admin'): ?>
+              <span class="badge sa">super_admin</span>
+            <?php else: ?>
+              <span class="badge emp">employee</span>
+            <?php endif; ?>
+          </td>
+          <td class="actions">
+            <form method="post" style="display:inline">
+              <input type="hidden" name="employee_id" value="<?= (int)$emp['EmployeeID'] ?>">
+              <input type="hidden" name="role_name" value="super_admin">
+              <button class="btn sa" type="submit">ตั้งเป็น super_admin</button>
+            </form>
+            <form method="post" style="display:inline">
+              <input type="hidden" name="employee_id" value="<?= (int)$emp['EmployeeID'] ?>">
+              <input type="hidden" name="role_name" value="employee">
+              <button class="btn emp" type="submit">ตั้งเป็น employee</button>
+            </form>
+          </td>
+        </tr>
+      <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+  </div>
 </body>
 </html>
