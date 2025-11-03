@@ -81,18 +81,25 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
 // 3. Main Logic: Query และเรียก Function
 // --------------------------------------------------------
 
+// --------------------------------------------------------
+// Main Logic: Query และเรียก Function (แก้ไขที่นี่)
+// --------------------------------------------------------
+
 $sql = "
     SELECT 
         b.BookingID, c.Email, c.CustomerName, b.StartDateTime 
     FROM 
-        bookings b
+        Tbl_Booking b   /* ⬅️ แก้ไขตรงนี้ */
     JOIN 
-        customers c ON b.CustomerID = c.CustomerID
+        Tbl_Customer c ON b.CustomerID = c.CustomerID /* ⬅️ แก้ไขตรงนี้ */
     WHERE 
         b.Status = 'Confirmed'
+        -- ตรวจสอบเวลา 25-35 นาทีก่อนเริ่ม
         AND b.StartDateTime BETWEEN DATE_ADD(NOW(), INTERVAL 25 MINUTE) AND DATE_ADD(NOW(), INTERVAL 35 MINUTE)
         AND b.NotificationSent = 0
 ";
+
+// ... (ส่วนที่เหลือของโค้ด) ...
 
 $result = $conn->query($sql);
 
