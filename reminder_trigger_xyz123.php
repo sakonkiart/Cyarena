@@ -87,15 +87,18 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
 
 $sql = "
     SELECT 
-        b.BookingID, c.Email, c.CustomerName, b.StartDateTime 
+        b.BookingID, 
+        c.Email, 
+        CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName, /* แก้ไข: รวม FirstName และ LastName เข้าด้วยกัน */
+        b.StartTime AS StartDateTime /* แก้ไข: ใช้ StartTime จาก DB และเปลี่ยนชื่อ (Alias) ให้เป็น StartDateTime */
     FROM 
-        Tbl_Booking b   /* ⬅️ แก้ไขตรงนี้ */
+        Tbl_Booking b   /* แก้ไข: ใช้ Tbl_Booking */
     JOIN 
-        Tbl_Customer c ON b.CustomerID = c.CustomerID /* ⬅️ แก้ไขตรงนี้ */
+        Tbl_Customer c ON b.CustomerID = c.CustomerID /* แก้ไข: ใช้ Tbl_Customer */
     WHERE 
-        b.Status = 'Confirmed'
-        -- ตรวจสอบเวลา 25-35 นาทีก่อนเริ่ม
-        AND b.StartDateTime BETWEEN DATE_ADD(NOW(), INTERVAL 25 MINUTE) AND DATE_ADD(NOW(), INTERVAL 35 MINUTE)
+        b.BookingStatusID = 2 /* แก้ไข: ใช้ ID 2 สำหรับ 'ยืนยันแล้ว' (Confirmed) */
+        -- ตรวจสอบเวลา 25-35 นาที ก่อน StartTime
+        AND b.StartTime BETWEEN DATE_ADD(NOW(), INTERVAL 25 MINUTE) AND DATE_ADD(NOW(), INTERVAL 35 MINUTE)
         AND b.NotificationSent = 0
 ";
 
