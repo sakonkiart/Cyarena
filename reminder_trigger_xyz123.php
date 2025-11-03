@@ -19,9 +19,9 @@ if (!isset($_GET['token']) || $_GET['token'] !== $SECRET_TOKEN) {
 // -------------------------------------------------------------------
 
 // นำเข้า (Require) ไฟล์ PHPMailer (พาธเดิม)
-require 'PHPMailer/src/Exception.php';
-require 'PHPMailer/src/PHPMailer.php';
-require 'PHPMailer/src/SMTP.php';
+require 'src/Exception.php';
+require 'src/PHPMailer.php';
+require 'src/SMTP.php';
 require 'db_connect.php'; 
 
 use PHPMailer\PHPMailer\PHPMailer;
