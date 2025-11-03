@@ -42,8 +42,9 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
         // 🔑 แก้ไข: App Password 16 หลัก (ใช้ค่าจริงของคุณ)
        $mail->Password   = 'rzwx bonp logd gaug'; 
 // 1. เปลี่ยนการเข้ารหัสเป็น SSL/TLS
-$mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; // ⬅️ แก้ไขจาก ENCRYPTION_STARTTLS
-// 2. เปลี่ยนพอร์ตจาก 587 เป็น 465
+// 1. เปลี่ยนการเข้ารหัสเป็น STARTTLS
+$mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // ⬅️ แก้ไขเป็น STARTTLS
+// 2. เปลี่ยนพอร์ตจาก 465 เป็น 587
 $mail->Port       = 587;
         // Sender/Recipient
         $mail->setFrom('no-reply@cyarena.com', 'CY Arena Booking');
