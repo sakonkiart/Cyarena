@@ -40,10 +40,11 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
         // 📧 แก้ไข: Gmail Address ของคุณ (ใช้ค่าจริงของคุณ)
         $mail->Username   = 'valorantwhq2548@gmail.com'; 
         // 🔑 แก้ไข: App Password 16 หลัก (ใช้ค่าจริงของคุณ)
-        $mail->Password   = 'ikkp oihu jyzy jbzj';          
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
-        
+       $mail->Password   = 'ikkp oihu jyzy jbzj'; 
+// 1. เปลี่ยนการเข้ารหัสเป็น SSL/TLS
+$mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; // ⬅️ แก้ไขจาก ENCRYPTION_STARTTLS
+// 2. เปลี่ยนพอร์ตจาก 587 เป็น 465
+$mail->Port       = 465;
         // Sender/Recipient
         $mail->setFrom('no-reply@cyarena.com', 'CY Arena Booking');
         
