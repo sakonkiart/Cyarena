@@ -30,36 +30,42 @@ use PHPMailer\PHPMailer\Exception;
 // ... (ฟังก์ชัน sendReminderEmail เหมือนเดิม) ...
 // (นำโค้ดฟังก์ชัน sendReminderEmail ทั้งหมดจาก booking_reminder_cron.php มาใส่ที่นี่)
 
+// ... (โค้ดก่อนหน้า) ...
 function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $bookingID) {
-    // ... (โค้ด PHPMailer ที่มีการตั้งค่า Username และ App Password แล้ว) ...
-    // ... (บรรทัดโค้ดใน image_e69107.png อยู่ตรงนี้) ...
     $mail = new PHPMailer(true);
     try {
-        // --- การตั้งค่า SMTP ของ Gmail (ใช้ App Password) ---
-        $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com'; 
-        $mail->SMTPAuth   = true;
-        // 📧 แก้ไข: Gmail Address ของคุณ
-        $mail->Username   = 'valorantwhq2548@gmail.com'; 
-        // 🔑 แก้ไข: App Password 16 หลัก
-        $mail->Password   = 'flim210845';          
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
+        // ... (การตั้งค่า SMTP ของ Gmail) ...
         
         // Sender/Recipient
         $mail->setFrom('no-reply@cyarena.com', 'CY Arena Booking');
-        $mail->addAddress($recipientEmail, $recipientName);
+        
+        // 🚨 ส่วนที่ต้องแก้ไข: ส่งไปที่อีเมลทดสอบของคุณ
+        $testEmail = 'YOUR_TEST_EMAIL@example.com'; 
+        $mail->addAddress($testEmail, "Tester");
+        
+        // **(สำคัญมาก) ลบหรือคอมเมนต์บรรทัดนี้ทิ้งไปชั่วคราว:**
+        // $mail->addAddress($recipientEmail, $recipientName); 
+        
         $mail->CharSet = 'UTF-8'; 
         
         // Content
         $mail->isHTML(true);
-        $mail->Subject = '⭐ แจ้งเตือน: การจองสนามจะเริ่มใน 30 นาที! (#'.$bookingID.')';
-        $mail->Body    = "
-            <h2>สวัสดีคุณ {$recipientName},</h2>
-            <p>การจองสนามของคุณหมายเลข <strong>#{$bookingID}</strong>
-            กำลังจะเริ่มต้นในอีก 30 นาที ข้างหน้า คือเวลา <strong>{$startTime} น.</strong></p>
-            <p>โปรดเดินทางมาถึงสนามตรงเวลา ขอบคุณที่ใช้บริการครับ!</p>
-        ";
+        // ... (เนื้อหาอีเมล) ...
+
+        $mail->send();
+        
+        // ⚠️ ข้อควรระวัง: คอมเมนต์ส่วนนี้ทิ้งไปชั่วคราว
+        // เพื่อป้องกันไม่ให้คอลัมน์ NotificationSent ถูกตั้งค่าเป็น 1
+        /*
+        $update_sql = "UPDATE Tbl_Booking SET NotificationSent = 1 WHERE BookingID = ?";
+        $stmt = $conn->prepare($update_sql);
+        $stmt->bind_param("i", $bookingID);
+        $stmt->execute();
+        */
+
+        return true;
+    } catch (Exception $e) {
+// ... (โค้ดที่เหลือ) ...
 
         $mail->send();
         
@@ -89,19 +95,18 @@ $sql = "
     SELECT 
         b.BookingID, 
         c.Email, 
-        CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName, /* แก้ไข: รวม FirstName และ LastName เข้าด้วยกัน */
-        b.StartTime AS StartDateTime /* แก้ไข: ใช้ StartTime จาก DB และเปลี่ยนชื่อ (Alias) ให้เป็น StartDateTime */
+        CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName, 
+        b.StartTime AS StartDateTime 
     FROM 
-        Tbl_Booking b   /* แก้ไข: ใช้ Tbl_Booking */
+        Tbl_Booking b   
     JOIN 
-        Tbl_Customer c ON b.CustomerID = c.CustomerID /* แก้ไข: ใช้ Tbl_Customer */
+        Tbl_Customer c ON b.CustomerID = c.CustomerID 
     WHERE 
-        b.BookingStatusID = 2 /* แก้ไข: ใช้ ID 2 สำหรับ 'ยืนยันแล้ว' (Confirmed) */
-        -- ตรวจสอบเวลา 25-35 นาที ก่อน StartTime
-        AND b.StartTime BETWEEN DATE_ADD(NOW(), INTERVAL 25 MINUTE) AND DATE_ADD(NOW(), INTERVAL 35 MINUTE)
+        b.BookingStatusID = 2 /* ดึงเฉพาะสถานะยืนยันแล้ว */
         AND b.NotificationSent = 0
+    ORDER BY b.BookingID DESC /* ดึงรายการล่าสุด */
+    LIMIT 1;
 ";
-
 // ... (ส่วนที่เหลือของโค้ด) ...
 
 $result = $conn->query($sql);
