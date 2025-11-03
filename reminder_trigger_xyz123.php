@@ -44,7 +44,7 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
 // 1. เปลี่ยนการเข้ารหัสเป็น SSL/TLS
 $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; // ⬅️ แก้ไขจาก ENCRYPTION_STARTTLS
 // 2. เปลี่ยนพอร์ตจาก 587 เป็น 465
-$mail->Port       = 465;
+$mail->Port       = 587;
         // Sender/Recipient
         $mail->setFrom('no-reply@cyarena.com', 'CY Arena Booking');
         
