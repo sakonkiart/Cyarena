@@ -1,45 +1,24 @@
 <?php
 session_start();
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
-    header("Location: login.php");
-    exit;
-}
-include 'db_connect.php';
-if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
 
-// ถ้าไม่ล็อกอินให้ไปหน้า login
+// ตรวจสอบว่าล็อกอินหรือไม่
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
 }
 
-// อนุญาตเฉพาะ super admin เท่านั้น (รองรับได้หลายชื่อ role เผื่อโปรเจ็กต์สะกดต่างกัน)
-$__ROLE = $_SESSION['role'] ?? '';
-$__IS_SUPER = in_array($__ROLE, ['superadmin', 'super_admin', 'super']);
+// อนุญาตเฉพาะ super admin เท่านั้น
+$role = $_SESSION['role'] ?? '';
+$is_super_admin = in_array($role, ['superadmin', 'super_admin', 'super']);
 
-if (!$__IS_SUPER) {
-    http_response_code(403);
-    echo "❌ ไม่มีสิทธิ์";
+if (!$is_super_admin) {
+    // ถ้าไม่ใช่ Superadmin ให้ redirect ไปหน้า dashboard พร้อมแจ้งเตือน
+    $_SESSION['error_message'] = '❌ คุณไม่มีสิทธิ์เข้าถึงหน้านี้ (เฉพาะ Superadmin เท่านั้น)';
+    header("Location: dashboard.php");
     exit;
 }
 
-// สวมบทชั่วคราวเป็น employee เพื่อให้ผ่านโค้ดเดิมที่ตรวจ role = 'employee'
-$_SESSION['__role_backup_for_superadmin__'] = $__ROLE;
-$_SESSION['role'] = 'employee';
-
-// คืนค่า role อัตโนมัติเมื่อสคริปต์จบ (รวมถึงกรณี exit/redirect)
-register_shutdown_function(function () {
-    if (isset($_SESSION['__role_backup_for_superadmin__'])) {
-        $_SESSION['role'] = $_SESSION['__role_backup_for_superadmin__'];
-        unset($_SESSION['__role_backup_for_superadmin__']);
-    }
-});
-
-// ป้องกัน cache เผื่อเพิ่งเปลี่ยนสิทธิ์แล้วกด back
-header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-header("Pragma: no-cache");
-header("Expires: 0");
-
+include 'db_connect.php';
 
 // ✅ เริ่มใช้งานโปรโมชั่นทันที
 if (isset($_GET['start'])) {
@@ -92,7 +71,7 @@ $result = $conn->query($sql);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎁 จัดการโปรโมชั่น - CY Arena</title>
+<title>🎁 จัดการโปรโมชั่น - CY Arena (Superadmin Only)</title>
 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
@@ -128,6 +107,20 @@ body {
 .container {
   max-width: 1400px;
   margin: 0 auto;
+}
+
+.superadmin-badge {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 50px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
 }
 
 .header {
@@ -275,12 +268,6 @@ textarea {
 .btn-submit:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(22, 163, 74, 0.5);
-}
-
-.btn-submit:disabled {
-  background: var(--gray-200);
-  cursor: not-allowed;
-  box-shadow: none;
 }
 
 .error-message {
@@ -520,13 +507,21 @@ tbody td {
 <body>
 
 <div class="container">
+  <!-- Superadmin Badge -->
+  <div style="text-align: center;">
+    <span class="superadmin-badge">
+      <i class="fas fa-crown"></i>
+      คุณกำลังใช้งานในโหมด Superadmin
+    </span>
+  </div>
+
   <!-- Header -->
   <div class="header">
     <h1 class="header-title">
       <i class="fas fa-gift"></i>
       จัดการโปรโมชั่น
     </h1>
-    <p class="header-subtitle">สร้างและจัดการโปรโมชั่นส่วนลดสำหรับลูกค้า</p>
+    <p class="header-subtitle">สร้างและจัดการโปรโมชั่นส่วนลดสำหรับลูกค้า (เฉพาะ Superadmin)</p>
   </div>
 
   <!-- Form Section -->
@@ -734,16 +729,6 @@ document.getElementById('promoForm').addEventListener('submit', function(e) {
   } else {
     errorMsg.classList.remove('show');
     document.querySelector('textarea[name="Conditions"]').style.borderColor = '';
-  }
-  
-  // Validate dates
-  const startDate = new Date(document.querySelector('input[name="StartDate"]').value);
-  const endDate = new Date(document.querySelector('input[name="EndDate"]').value);
-  
-  if (endDate <= startDate) {
-    e.preventDefault();
-    alert('⚠️ วันสิ้นสุดต้องมาหลังวันเริ่มต้น');
-    return false;
   }
 });
 
