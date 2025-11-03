@@ -1,70 +1,107 @@
 <?php
 // super_admin_grant.php
 session_start();
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit;
-}
+if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit; }
 if (($_SESSION['role'] ?? '') !== 'super_admin') {
-    http_response_code(403);
-    echo "403 Forbidden – ต้องเป็น super_admin เท่านั้น";
-    exit;
+  http_response_code(403);
+  echo "403 Forbidden – ต้องเป็น super_admin เท่านั้น";
+  exit;
 }
 
-if (!file_exists('db_connect.php')) {
-    die("Fatal Error: ไม่พบไฟล์ db_connect.php");
-}
+if (!file_exists('db_connect.php')) { die("Fatal Error: ไม่พบไฟล์ db_connect.php"); }
 include 'db_connect.php';
 @$conn->query("SET time_zone = '+07:00'");
 
 $message = "";
 
-/* ===== สร้าง role พื้นฐาน ถ้ายังไม่มี ===== */
-@$conn->query("
-  INSERT INTO Tbl_Role (RoleName)
-  SELECT 'employee' FROM DUAL
-  WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='employee')
-");
-@$conn->query("
-  INSERT INTO Tbl_Role (RoleName)
-  SELECT 'super_admin' FROM DUAL
-  WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')
+/* ===== เตรียมตารางสิทธิ์ admin รายประเภทสนาม (สร้างครั้งเดียว) ===== */
+$conn->query("
+CREATE TABLE IF NOT EXISTS Tbl_Type_Admin (
+  TypeAdminID INT AUTO_INCREMENT PRIMARY KEY,
+  CustomerID  INT NOT NULL,
+  VenueTypeID INT NOT NULL,
+  CreatedAt   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_type_admin_customer (CustomerID),
+  KEY idx_type_admin_type (VenueTypeID)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ");
 
-/* ดึงแผนที่ role */
+/* ===== role พื้นฐานของพนักงาน (กันลืม) ===== */
+@$conn->query("INSERT INTO Tbl_Role (RoleName)
+               SELECT 'employee' FROM DUAL
+               WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='employee')");
+@$conn->query("INSERT INTO Tbl_Role (RoleName)
+               SELECT 'super_admin' FROM DUAL
+               WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')");
+
+/* แผนที่ role */
 $roles = [];
 if ($rs = $conn->query("SELECT RoleID, RoleName FROM Tbl_Role ORDER BY RoleName")) {
-  while ($r = $rs->fetch_assoc()) { $roles[$r['RoleName']] = (int)$r['RoleID']; }
+  while ($r = $rs->fetch_assoc()) $roles[$r['RoleName']] = (int)$r['RoleID'];
   $rs->close();
 }
 
-/* ===== เปลี่ยนสิทธิ์พนักงาน (ลูกค้าไม่มี RoleID) ===== */
+/* ===== จัดการสิทธิ์พนักงาน (เหมือนเดิม) ===== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['employee_id'], $_POST['role_name'])) {
-    $empId     = (int)$_POST['employee_id'];
-    $roleName  = trim($_POST['role_name']);
-
-    if (!isset($roles[$roleName])) {
-        $message = "❌ ไม่พบสิทธิ์ที่เลือก";
+  $empId    = (int)$_POST['employee_id'];
+  $roleName = trim($_POST['role_name']);
+  if (!isset($roles[$roleName])) {
+    $message = "❌ ไม่พบสิทธิ์ที่เลือก";
+  } else {
+    $rid = $roles[$roleName];
+    if ($empId === (int)$_SESSION['user_id'] && $roleName !== 'super_admin') {
+      $message = "⚠️ ห้ามเปลี่ยนสิทธิ์ของตัวเองเป็นอย่างอื่นนอกจาก super_admin";
     } else {
-        $rid = $roles[$roleName];
-        if ($empId === (int)$_SESSION['user_id'] && $roleName !== 'super_admin') {
-            $message = "⚠️ ห้ามเปลี่ยนสิทธิ์ของตัวเองเป็นอย่างอื่นนอกจาก super_admin";
-        } else {
-            $stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID=? WHERE EmployeeID=?");
-            $stmt->bind_param("ii", $rid, $empId);
-            if ($stmt->execute()) {
-                $message = "✅ อัปเดตสิทธิ์สำเร็จ";
-            } else {
-                $message = "❌ อัปเดตไม่สำเร็จ: " . htmlspecialchars($conn->error);
-            }
-            $stmt->close();
-        }
+      $stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID=? WHERE EmployeeID=?");
+      $stmt->bind_param("ii", $rid, $empId);
+      if ($stmt->execute()) { $message = "✅ อัปเดตสิทธิ์พนักงานสำเร็จ"; }
+      else { $message = "❌ อัปเดตไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+      $stmt->close();
     }
+  }
 }
 
-/* ===== ดึงผู้ใช้ทั้งหมด (พนักงาน + ลูกค้า) ===== */
-/* พนักงาน */
+/* ===== แต่งตั้ง/ถอน ลูกค้าเป็น admin รายประเภทสนาม ===== */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['type_admin_action'])) {
+  $action = $_POST['type_admin_action'];
+  $cid    = (int)($_POST['customer_id'] ?? 0);
+
+  if ($action === 'assign') {
+    $vtid = (int)($_POST['venue_type_id'] ?? 0);
+    if ($vtid <= 0) {
+      $message = "❌ กรุณาเลือกประเภทสนาม";
+    } else {
+      // อนุญาตเฉพาะ 1 ประเภทต่อ 1 ลูกค้า (UPSERT)
+      $stmt = $conn->prepare("
+        INSERT INTO Tbl_Type_Admin (CustomerID, VenueTypeID)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE VenueTypeID = VALUES(VenueTypeID)
+      ");
+      $stmt->bind_param("ii", $cid, $vtid);
+      if ($stmt->execute()) { $message = "✅ แต่งตั้ง/ปรับประเภท admin สำเร็จ"; }
+      else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+      $stmt->close();
+    }
+  } elseif ($action === 'revoke') {
+    $stmt = $conn->prepare("DELETE FROM Tbl_Type_Admin WHERE CustomerID=?");
+    $stmt->bind_param("i", $cid);
+    if ($stmt->execute()) { $message = "✅ ยกเลิกสิทธิ์สำเร็จ"; }
+    else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+    $stmt->close();
+  }
+}
+
+/* รายการประเภทสนาม (ให้ super_admin เลือกตอนแต่งตั้ง) */
+$venueTypes = [];
+if ($vt = $conn->query("SELECT VenueTypeID, TypeName FROM Tbl_Venue_Type ORDER BY TypeName")) {
+  while ($r = $vt->fetch_assoc()) $venueTypes[] = $r;
+  $vt->close();
+}
+
+/* ===== ดึงผู้ใช้ทั้งหมด (พนักงาน + ลูกค้า + สิทธิ์ type_admin ถ้ามี) ===== */
 $users = [];
+
+/* พนักงาน */
 $sqlEmp = "
   SELECT e.EmployeeID AS id, e.FirstName, e.Username,
          COALESCE(r.RoleName,'employee') AS role_name,
@@ -72,30 +109,25 @@ $sqlEmp = "
   FROM Tbl_Employee e
   LEFT JOIN Tbl_Role r ON e.RoleID = r.RoleID
 ";
-if ($res = $conn->query($sqlEmp)) {
-    $users = array_merge($users, $res->fetch_all(MYSQLI_ASSOC));
-    $res->close();
-}
+if ($res = $conn->query($sqlEmp)) { $users = array_merge($users, $res->fetch_all(MYSQLI_ASSOC)); $res->close(); }
 
-/* ลูกค้า (ไม่มี RoleID) */
+/* ลูกค้า + สิทธิ์รายประเภท (ถ้ามี) */
 $sqlCus = "
   SELECT c.CustomerID AS id, c.FirstName, c.Username,
-         NULL AS role_name,
+         t.VenueTypeID, vt.TypeName,
          'customer' AS kind
   FROM Tbl_Customer c
+  LEFT JOIN Tbl_Type_Admin t ON t.CustomerID = c.CustomerID
+  LEFT JOIN Tbl_Venue_Type vt ON vt.VenueTypeID = t.VenueTypeID
 ";
-if ($res = $conn->query($sqlCus)) {
-    $users = array_merge($users, $res->fetch_all(MYSQLI_ASSOC));
-    $res->close();
-}
+if ($res = $conn->query($sqlCus)) { $users = array_merge($users, $res->fetch_all(MYSQLI_ASSOC)); $res->close(); }
 
-/* จัดเรียง: employee มาก่อน, จากนั้น customer; แล้วค่อยเรียงตาม Username */
+/* เรียง: employee ก่อน, แล้ว customer; ต่อด้วย username */
 usort($users, function($a,$b){
-    $rank = ['employee'=>0,'customer'=>1];
-    $ka = $rank[$a['kind']] ?? 9;
-    $kb = $rank[$b['kind']] ?? 9;
-    if ($ka !== $kb) return $ka <=> $kb;
-    return strcmp((string)$a['Username'], (string)$b['Username']);
+  $rank = ['employee'=>0,'customer'=>1];
+  $ka = $rank[$a['kind']] ?? 9; $kb = $rank[$b['kind']] ?? 9;
+  if ($ka !== $kb) return $ka <=> $kb;
+  return strcmp((string)$a['Username'], (string)$b['Username']);
 });
 ?>
 <!DOCTYPE html>
@@ -103,53 +135,52 @@ usort($users, function($a,$b){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>มอบสิทธิ์ผู้ดูแลระบบสูงสุด</title>
+<title>มอบสิทธิ์ผู้ดูแลระบบสูงสุด / admin รายประเภทสนาม</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 body{font-family:'Sarabun',sans-serif;background:#f6f7fb;margin:0;padding:24px;color:#0f172a}
-h1{margin:0 0 16px}
+h1{margin:0 0 10px} .sub{color:#64748b;margin:0 0 16px}
 .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.05);padding:16px}
 .table{width:100%;border-collapse:collapse}
-.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;vertical-align:top}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.85rem;font-weight:700}
 .badge.sa{background:#1d4ed8;color:#fff}
 .badge.emp{background:#10b981;color:#064e3b}
 .badge.cus{background:#e5e7eb;color:#374151}
+.badge.ta{background:#fb923c;color:#7c2d12}
 .type{display:inline-block;padding:2px 8px;border-radius:8px;font-size:.82rem;margin-right:6px}
 .type-emp{background:#d1fae5;color:#065f46}
 .type-cus{background:#e5e7eb;color:#374151}
-.actions{display:flex;gap:8px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
 .btn{border:none;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
 .btn.sa{background:#1d4ed8;color:#fff}
 .btn.emp{background:#10b981;color:#fff}
-.btn.dis{background:#e5e7eb;color:#6b7280;cursor:not-allowed}
+.btn.warn{background:#ef4444;color:#fff}
+.select{padding:6px 8px;border:1px solid #e5e7eb;border-radius:8px}
 .msg{margin:12px 0 16px;padding:10px 12px;border-radius:10px;border:1px solid #e5e7eb;background:#f8fafc}
-.small{color:#64748b;font-size:.9rem}
-.search{margin:10px 0 16px}
-.search input{width:260px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px}
+.search{margin:10px 0 16px} .search input{width:260px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px}
+.small{color:#64748b}
 </style>
 </head>
 <body>
-  <h1>มอบสิทธิ์ผู้ดูแลระบบสูงสุด (super_admin)</h1>
-  <div class="small">หน้ารวมผู้ใช้ทั้งหมดในระบบ (พนักงาน + ลูกค้า) — ปุ่มเปลี่ยนสิทธิ์ใช้ได้เฉพาะ “พนักงาน”</div>
+  <h1>มอบสิทธิ์ผู้ดูแลระบบ &nbsp;|&nbsp; ตั้งลูกค้าเป็น admin รายประเภทสนาม</h1>
+  <p class="sub">พนักงานใช้ปุ่มด้านขวาเพื่อสลับสิทธิ์ ส่วนลูกค้าเลือก “ประเภทสนาม” เพื่อแต่งตั้ง/เปลี่ยนสิทธิ์ (ได้เพียง 1 ประเภท)</p>
 
   <?php if ($message): ?>
     <div class="msg"><?= htmlspecialchars($message) ?></div>
   <?php endif; ?>
 
   <div class="card">
-    <div class="search">
-      🔎 ค้นหา: <input type="text" id="q" placeholder="พิมพ์ชื่อหรือ username">
-    </div>
+    <div class="search">🔎 ค้นหา: <input type="text" id="q" placeholder="พิมพ์ชื่อหรือ username"></div>
     <table class="table" id="tbl">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>ประเภท</th>
+          <th style="width:70px">ID</th>
+          <th style="width:120px">ประเภทผู้ใช้</th>
           <th>ชื่อ (FirstName)</th>
           <th>Username</th>
-          <th>สิทธิ์ปัจจุบัน</th>
-          <th>จัดการ</th>
+          <th>สิทธิ์/บทบาทปัจจุบัน</th>
+          <th style="width:420px">จัดการ</th>
         </tr>
       </thead>
       <tbody>
@@ -174,8 +205,12 @@ h1{margin:0 0 16px}
               <?php else: ?>
                 <span class="badge emp">employee</span>
               <?php endif; ?>
-            <?php else: ?>
-              <span class="badge cus">-</span>
+            <?php else: /* customer */ ?>
+              <?php if (!empty($u['VenueTypeID'])): ?>
+                <span class="badge ta">type_admin: <?= htmlspecialchars($u['TypeName']) ?></span>
+              <?php else: ?>
+                <span class="badge cus">ลูกค้าทั่วไป</span>
+              <?php endif; ?>
             <?php endif; ?>
           </td>
           <td class="actions">
@@ -190,8 +225,28 @@ h1{margin:0 0 16px}
                 <input type="hidden" name="role_name" value="employee">
                 <button class="btn emp" type="submit">ตั้งเป็น employee</button>
               </form>
-            <?php else: ?>
-              <button class="btn dis" type="button" disabled>ลูกค้า (อ่านอย่างเดียว)</button>
+            <?php else: /* customer: แต่งตั้ง admin รายประเภท */ ?>
+              <form method="post" style="display:flex;gap:8px;align-items:center">
+                <input type="hidden" name="type_admin_action" value="assign">
+                <input type="hidden" name="customer_id" value="<?= (int)$u['id'] ?>">
+                <select name="venue_type_id" class="select" required>
+                  <option value="">— เลือกประเภทสนาม —</option>
+                  <?php foreach ($venueTypes as $t): ?>
+                    <option value="<?= (int)$t['VenueTypeID'] ?>" <?= (!empty($u['VenueTypeID']) && (int)$u['VenueTypeID']===(int)$t['VenueTypeID'])?'selected':''; ?>>
+                      <?= htmlspecialchars($t['TypeName']) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <button class="btn emp" type="submit">บันทึกเป็น admin ของประเภทนี้</button>
+              </form>
+              <?php if (!empty($u['VenueTypeID'])): ?>
+                <form method="post" style="display:inline">
+                  <input type="hidden" name="type_admin_action" value="revoke">
+                  <input type="hidden" name="customer_id" value="<?= (int)$u['id'] ?>">
+                  <button class="btn warn" type="submit">ยกเลิกสิทธิ์</button>
+                </form>
+              <?php endif; ?>
+              <div class="small">* ลูกค้า 1 คนมีได้ 1 ประเภทสนามเท่านั้น</div>
             <?php endif; ?>
           </td>
         </tr>
@@ -202,12 +257,11 @@ h1{margin:0 0 16px}
 
 <script>
 const q = document.getElementById('q');
-const tbl = document.getElementById('tbl').querySelector('tbody');
+const tb = document.getElementById('tbl').querySelector('tbody');
 q.addEventListener('input', () => {
-  const term = q.value.toLowerCase().trim();
-  for (const tr of tbl.querySelectorAll('tr')) {
-    const text = tr.innerText.toLowerCase();
-    tr.style.display = text.includes(term) ? '' : 'none';
+  const t = q.value.toLowerCase().trim();
+  for (const tr of tb.querySelectorAll('tr')) {
+    tr.style.display = tr.innerText.toLowerCase().includes(t) ? '' : 'none';
   }
 });
 </script>
