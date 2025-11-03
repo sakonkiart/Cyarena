@@ -8,11 +8,6 @@ header("Expires: 0");
 
 /* =========================
    >>> ADD: รองรับสิทธิ์ type_admin (ลูกค้าที่ถูกแต่งตั้งให้จัดการการจองได้เฉพาะ 1 ประเภทสนาม)
-   แนวคิด:
-   - ถ้า role เป็น 'type_admin' ให้ "สวมบทชั่วคราว" เป็น employee เพื่อผ่าน if เดิม
-   - บันทึกสถานะไว้ใน $IS_TYPE_ADMIN และจำ VenueTypeID ที่ได้รับมอบสิทธิ์
-   - ทุกการกระทำ (อัปเดต/ยกเลิก/ลบ) จะตรวจสอบสิทธิ์ว่าการจองนั้นอยู่ในประเภทสนามที่ได้รับมอบสิทธิ์จริง
-   - การแสดงรายการจองจะถูกกรองเฉพาะประเภทสนามที่ได้รับมอบสิทธิ์
    ========================= */
 $IS_TYPE_ADMIN   = false;
 $TYPE_ADMIN_VTID = 0;
@@ -314,9 +309,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
             header("Location: manage_bookings.php");
             exit;
         }
-        $sql_ta = "UPDATE Tbl_Booking 
-                   SET BookingStatusID = ?, PaymentStatusID = ?
-                   WHERE BookingID = ?";
+        $sql_ta = "UPDATE Tbl_Booking 
+                   SET BookingStatusID = ?, PaymentStatusID = ?
+                   WHERE BookingID = ?";
         if ($stmt = $conn->prepare($sql_ta)) {
             $stmt->bind_param("iii", $booking_status, $payment_status, $booking_id);
             if ($stmt->execute()) {
@@ -364,12 +359,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     }
 
     // ----- โค้ดเดิมของพนักงาน (คงไว้) -----
-    $update_sql = "UPDATE Tbl_Booking 
-                   SET BookingStatusID = ?, PaymentStatusID = ?, EmployeeID = ?
-                   WHERE BookingID = ?";
+    $update_sql = "UPDATE Tbl_Booking 
+                   SET BookingStatusID = ?, PaymentStatusID = ?, EmployeeID = ?
+                   WHERE BookingID = ?";
     $stmt = $conn->prepare($update_sql);
     $stmt->bind_param("iiii", $booking_status, $payment_status, $employee_id, $booking_id);
-     
+    
     if ($stmt->execute()) {
 
         // ***********************************************************************
@@ -409,7 +404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     _restore_type_admin_role_before_redirect(); /* >>> ADD */
     header("Location: manage_bookings.php");
     exit;
-}
+} // <-- นี่คือวงเล็บปิดของบล็อก POST หลักที่อาจจะหายไป
 
 // ✅ จัดการการยกเลิกการจอง
 if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
@@ -521,6 +516,15 @@ $booking_statuses = $conn->query("SELECT * FROM Tbl_Booking_Status")->fetch_all(
 $payment_statuses = $conn->query("SELECT * FROM Tbl_Payment_Status")->fetch_all(MYSQLI_ASSOC);
 
 $conn->close();
+?>
+<!-- HTML และส่วนแสดงผลตารางการจอง -->
+<!-- (ส่วน HTML, CSS และ JavaScript เดิมจะมาต่อจากตรงนี้) -->
+<!-- EOF -->
+
+<?php
+/* >>> ADD (สำคัญ): คืนค่า role เดิม ถ้าสวม...
+// ... (ส่วนท้ายของไฟล์เดิม) ...
+*/
 ?>
 
 <!DOCTYPE html>
