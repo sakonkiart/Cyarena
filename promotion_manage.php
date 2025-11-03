@@ -5,6 +5,41 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
     exit;
 }
 include 'db_connect.php';
+if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
+
+// ถ้าไม่ล็อกอินให้ไปหน้า login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
+
+// อนุญาตเฉพาะ super admin เท่านั้น (รองรับได้หลายชื่อ role เผื่อโปรเจ็กต์สะกดต่างกัน)
+$__ROLE = $_SESSION['role'] ?? '';
+$__IS_SUPER = in_array($__ROLE, ['superadmin', 'super_admin', 'super']);
+
+if (!$__IS_SUPER) {
+    http_response_code(403);
+    echo "❌ ไม่มีสิทธิ์";
+    exit;
+}
+
+// สวมบทชั่วคราวเป็น employee เพื่อให้ผ่านโค้ดเดิมที่ตรวจ role = 'employee'
+$_SESSION['__role_backup_for_superadmin__'] = $__ROLE;
+$_SESSION['role'] = 'employee';
+
+// คืนค่า role อัตโนมัติเมื่อสคริปต์จบ (รวมถึงกรณี exit/redirect)
+register_shutdown_function(function () {
+    if (isset($_SESSION['__role_backup_for_superadmin__'])) {
+        $_SESSION['role'] = $_SESSION['__role_backup_for_superadmin__'];
+        unset($_SESSION['__role_backup_for_superadmin__']);
+    }
+});
+
+// ป้องกัน cache เผื่อเพิ่งเปลี่ยนสิทธิ์แล้วกด back
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
+?>
 
 // ✅ เริ่มใช้งานโปรโมชั่นทันที
 if (isset($_GET['start'])) {
