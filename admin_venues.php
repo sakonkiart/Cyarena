@@ -3,6 +3,12 @@
 // Admin page to create/edit venues, upload images, set maintenance status, and delete.
 
 session_start();
+
+/* >>> ADD: ป้องกัน cache ให้โหลดข้อมูลสดหลัง redirect เสมอ */
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
@@ -566,7 +572,7 @@ textarea.form-control-modern {
                         
                         <div class="mb-3">
                             <label class="form-label-modern">ประเภทสนาม</label>
-                            <select name="VenueTypeID" class="form-select form-select-modern" required>
+                            <select name="VenueTypeID" class="form-select form-select-modern" required <?= $IS_TYPE_ADMIN ? 'disabled' : '' ?>>
                                 <option value="">-- เลือกประเภท --</option>
                                 <?php foreach ($types as $t): ?>
                                     <option value="<?= (int)$t['VenueTypeID'] ?>" <?= ($editing && $editRow['VenueTypeID']==$t['VenueTypeID'])?'selected':'' ?>>
@@ -574,6 +580,12 @@ textarea.form-control-modern {
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <!-- >>> ADD: บังคับส่งค่าและล็อกให้เลือกได้เฉพาะประเภทของตน -->
+                            <?php if ($IS_TYPE_ADMIN): ?>
+                                <input type="hidden" name="VenueTypeID" value="<?= (int)$TYPE_ADMIN_VTID ?>">
+                            <?php endif; ?>
+                            <!-- <<< END ADD -->
+
                             <!-- >>> ADD: ถ้าเป็น type_admin ให้เตือนว่าถูกจำกัดประเภท -->
                             <?php if ($IS_TYPE_ADMIN): ?>
                               <small class="form-text-modern"><i class="fas fa-info-circle me-1"></i>คุณถูกจำกัดให้เลือกเฉพาะประเภท: <strong><?= h($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) ?></strong></small>
@@ -731,3 +743,11 @@ textarea.form-control-modern {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
+<?php
+/* >>> ADD: คืนค่า role เดิม ถ้าเคยสวมบท employee ชั่วคราว */
+if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
+    $_SESSION['role'] = 'type_admin';
+    unset($_SESSION['role_backup_for_type_admin']);
+}
+/* <<< END ADD */
