@@ -1,19 +1,12 @@
 <?php
 session_start();
 
-/* >>> ADD: ป้องกัน cache ให้โหลดข้อมูลสดหลัง redirect เสมอ */
+/* >>> ADD: ป้องกัน cache */
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 
-/* =========================
-   >>> ADD: รองรับสิทธิ์ type_admin (ลูกค้าที่ถูกแต่งตั้งให้จัดการการจองได้เฉพาะ 1 ประเภทสนาม)
-   แนวคิด:
-   - ถ้า role เป็น 'type_admin' ให้ "สวมบทชั่วคราว" เป็น employee เพื่อผ่าน if เดิม
-   - บันทึกสถานะไว้ใน $IS_TYPE_ADMIN และจำ VenueTypeID ที่ได้รับมอบสิทธิ์
-   - ทุกการกระทำ (อัปเดต/ยกเลิก/ลบ) จะตรวจสอบสิทธิ์ว่าการจองนั้นอยู่ในประเภทสนามที่ได้รับมอบสิทธิ์จริง
-   - การแสดงรายการจองจะถูกกรองเฉพาะประเภทสนามที่ได้รับมอบสิทธิ์
-   ========================= */
+/* >>> ADD: รองรับ type_admin */
 $IS_TYPE_ADMIN   = false;
 $TYPE_ADMIN_VTID = 0;
 $TYPE_ADMIN_NAME = '';
@@ -22,15 +15,12 @@ if (isset($_SESSION['role']) && $_SESSION['role'] === 'type_admin') {
     $IS_TYPE_ADMIN   = true;
     $TYPE_ADMIN_VTID = (int)($_SESSION['type_admin_venue_type_id'] ?? 0);
     $TYPE_ADMIN_NAME = (string)($_SESSION['type_admin_type_name'] ?? '');
-
-    // สวมบท employee ชั่วคราวเพื่อให้ผ่านการตรวจสิทธิ์เดิม (ด้านล่าง)
     $_SESSION['role_backup_for_type_admin'] = 'type_admin';
     $_SESSION['role'] = 'employee';
 }
 
-// ✅ ตรวจสอบสิทธิ์พนักงาน (type_admin ที่สวมบทเป็น employee ก็จะผ่านได้)
+// ✅ ตรวจสอบสิทธิ์พนักงาน
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
-    /* >>> ADD: คืน role ให้ถูกต้องก่อน redirect */
     if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
         $_SESSION['role'] = 'type_admin';
         unset($_SESSION['role_backup_for_type_admin']);
@@ -62,7 +52,7 @@ if ($avatarPath && _exists_rel($avatarPath)) {
     );
 }
 
-/* >>> ADD: util คืนค่า role type_admin ถ้าเคยสวมบท employee (เรียกก่อนทุก redirect) */
+/* >>> ADD: util functions */
 function _restore_type_admin_role_before_redirect(): void {
     if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
         $_SESSION['role'] = 'type_admin';
@@ -70,31 +60,17 @@ function _restore_type_admin_role_before_redirect(): void {
     }
 }
 
-/* >>> ADD: ฟังก์ชันเรียก trigger อีเมลยืนยันการจอง */
 function _trigger_confirmation_email(int $booking_id): void {
-    $secret_token = "your_ultra_secret_cron_key_98765"; // ต้องตรงกับที่ตั้งใน reminder_trigger_xyz123.php
-    $base_url = "https://cyarena.onrender.com"; // ⚠️ เปลี่ยนเป็น URL จริงของคุณ
-    
+    $secret_token = "your_ultra_secret_cron_key_98765";
+    $base_url = "https://cyarena.onrender.com";
     $trigger_url = "{$base_url}/reminder_trigger_xyz123.php?token={$secret_token}&booking_id={$booking_id}";
-    
-    // ใช้ file_get_contents แบบ async (ไม่รอผลลัพธ์)
-    $context = stream_context_create([
-        'http' => [
-            'timeout' => 1, // timeout เร็วเพื่อไม่ให้หน้าช้า
-            'ignore_errors' => true
-        ]
-    ]);
-    
+    $context = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
     @file_get_contents($trigger_url, false, $context);
 }
 
-/* >>> ADD: ฟังก์ชันตรวจสอบสิทธิ์ของ type_admin ว่าสามารถจัดการ booking นี้ได้หรือไม่ */
 function _type_admin_can_manage(mysqli $conn, int $booking_id, int $vtid): bool {
     if ($vtid <= 0) return false;
-    $q = "SELECT 1
-          FROM Tbl_Booking b
-          JOIN Tbl_Venue v ON v.VenueID = b.VenueID
-          WHERE b.BookingID = ? AND v.VenueTypeID = ?";
+    $q = "SELECT 1 FROM Tbl_Booking b JOIN Tbl_Venue v ON v.VenueID = b.VenueID WHERE b.BookingID = ? AND v.VenueTypeID = ?";
     if (!$st = $conn->prepare($q)) return false;
     $st->bind_param("ii", $booking_id, $vtid);
     $st->execute();
@@ -104,20 +80,11 @@ function _type_admin_can_manage(mysqli $conn, int $booking_id, int $vtid): bool 
     return $ok;
 }
 
-/* >>> ADD: รองรับปุ่มลัดเปลี่ยนสถานะ/ชำระเงิน (เช็คสิทธิ์ type_admin ก่อนเสมอ)
-   ใช้ได้กับพารามิเตอร์:
-   - ?quick=confirm|complete|cancel|paid&id=BOOKING_ID
-   - หรือ ?action=confirm|complete|cancel|paid&id=BOOKING_ID
-   - หรือ ?pay=paid&id=BOOKING_ID
-*/
-if (
-    (isset($_GET['quick']) || isset($_GET['action']) || isset($_GET['pay'])) &&
-    isset($_GET['id']) && ctype_digit((string)$_GET['id'])
-) {
+/* >>> ADD: รองรับปุ่มลัด */
+if ((isset($_GET['quick']) || isset($_GET['action']) || isset($_GET['pay'])) && isset($_GET['id']) && ctype_digit((string)$_GET['id'])) {
     $op  = $_GET['quick'] ?? ($_GET['action'] ?? (($_GET['pay'] ?? '')));
     $bid = (int)$_GET['id'];
 
-    // ถ้าเป็น type_admin ต้องยืนยันสิทธิ์ตามประเภทสนามก่อน
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $bid, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์จัดการการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
         _restore_type_admin_role_before_redirect();
@@ -125,7 +92,6 @@ if (
         exit;
     }
 
-    // Map คำสั่งเป็น SQL
     $sql = null; $msg = null;
     if ($op === 'confirm') {
         $sql = "UPDATE Tbl_Booking SET BookingStatusID = 2 WHERE BookingID = ?";
@@ -147,8 +113,6 @@ if (
             $st->execute();
             $st->close();
             $_SESSION['success_message'] = "$msg (#{$bid})";
-            
-            // >>> ADD: ส่งอีเมลยืนยันเมื่อกด confirm
             if ($op === 'confirm') {
                 _trigger_confirmation_email($bid);
             }
@@ -160,7 +124,6 @@ if (
         exit;
     }
 }
-/* <<< END ADD */
 
 // ✅ จัดการการอัปเดตสถานะ
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
@@ -168,7 +131,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $booking_status = intval($_POST['booking_status']);
     $payment_status = intval($_POST['payment_status']);
 
-    /* >>> ADD: ถ้าเป็น type_admin ต้องเช็คสิทธิ์ และอัปเดตโดย "ไม่แตะต้อง EmployeeID" */
     if ($IS_TYPE_ADMIN) {
         if (!_type_admin_can_manage($conn, $booking_id, $TYPE_ADMIN_VTID)) {
             $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์แก้ไขการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
@@ -176,15 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
             header("Location: manage_bookings.php");
             exit;
         }
-        $sql_ta = "UPDATE Tbl_Booking 
-                   SET BookingStatusID = ?, PaymentStatusID = ?
-                   WHERE BookingID = ?";
+        $sql_ta = "UPDATE Tbl_Booking SET BookingStatusID = ?, PaymentStatusID = ? WHERE BookingID = ?";
         if ($stmt = $conn->prepare($sql_ta)) {
             $stmt->bind_param("iii", $booking_status, $payment_status, $booking_id);
             if ($stmt->execute()) {
                 $_SESSION['success_message'] = "✅ อัปเดตสถานะเรียบร้อยแล้ว! (Booking #$booking_id)";
-                
-                // >>> ADD: ส่งอีเมลยืนยันเมื่ออัปเดตเป็นสถานะ "ยืนยันแล้ว" (BookingStatusID = 2)
                 if ($booking_status == 2) {
                     _trigger_confirmation_email($booking_id);
                 }
@@ -197,20 +155,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         }
         _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
-        exit; // กันไม่ให้ไหลไปใช้โค้ดเดิมของ employee ด้านล่าง
+        exit;
     }
 
-    // ----- โค้ดเดิมของพนักงาน (คงไว้) -----
-    $update_sql = "UPDATE Tbl_Booking 
-                   SET BookingStatusID = ?, PaymentStatusID = ?, EmployeeID = ?
-                   WHERE BookingID = ?";
+    $update_sql = "UPDATE Tbl_Booking SET BookingStatusID = ?, PaymentStatusID = ?, EmployeeID = ? WHERE BookingID = ?";
     $stmt = $conn->prepare($update_sql);
     $stmt->bind_param("iiii", $booking_status, $payment_status, $employee_id, $booking_id);
     
     if ($stmt->execute()) {
         $_SESSION['success_message'] = "✅ อัปเดตสถานะเรียบร้อยแล้ว! (Booking #$booking_id)";
-        
-        // >>> ADD: ส่งอีเมลยืนยันเมื่ออัปเดตเป็นสถานะ "ยืนยันแล้ว" (BookingStatusID = 2)
         if ($booking_status == 2) {
             _trigger_confirmation_email($booking_id);
         }
@@ -227,7 +180,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
 if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
     $cancel_id = intval($_GET['cancel']);
 
-    /* >>> ADD: ป้องกัน type_admin ยกเลิกข้ามประเภทสนาม */
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $cancel_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ยกเลิกการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
         _restore_type_admin_role_before_redirect();
@@ -242,11 +194,10 @@ if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
     exit;
 }
 
-// ✅ จัดการการลบการจอง (ใหม่)
+// ✅ จัดการการลบการจอง
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $delete_id = intval($_GET['delete']);
 
-    /* >>> ADD: ป้องกัน type_admin ลบข้ามประเภทสนาม */
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $delete_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ลบการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
         _restore_type_admin_role_before_redirect();
@@ -254,7 +205,6 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
         exit;
     }
     
-    // ลบข้อมูลจากฐานข้อมูล
     $delete_sql = "DELETE FROM Tbl_Booking WHERE BookingID = ?";
     $stmt = $conn->prepare($delete_sql);
     $stmt->bind_param("i", $delete_id);
@@ -282,8 +232,7 @@ $filter_status = $_GET['status'] ?? '';
 $filter_payment = $_GET['payment'] ?? '';
 $filter_date = $_GET['date'] ?? '';
 
-$sql = "SELECT 
-            b.BookingID, b.VenueID, v.VenueName, c.FirstName, c.LastName, c.Phone,
+$sql = "SELECT b.BookingID, b.VenueID, v.VenueName, c.FirstName, c.LastName, c.Phone,
             b.StartTime, b.EndTime, b.HoursBooked, b.TotalPrice,
             bs.StatusName AS BookingStatus, b.BookingStatusID,
             ps.StatusName AS PaymentStatus, b.PaymentStatusID,
@@ -295,7 +244,6 @@ $sql = "SELECT
         JOIN Tbl_Payment_Status ps ON b.PaymentStatusID = ps.PaymentStatusID
         WHERE 1=1";
 
-/* >>> ADD: จำกัดรายการเฉพาะประเภทสนามของ type_admin */
 if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
     $sql .= " AND v.VenueTypeID = " . (int)$TYPE_ADMIN_VTID;
 }
@@ -328,7 +276,6 @@ if ($result && $result->num_rows > 0) {
     }
 }
 
-// ดึงข้อมูลสถานะทั้งหมด
 $booking_statuses = $conn->query("SELECT * FROM Tbl_Booking_Status")->fetch_all(MYSQLI_ASSOC);
 $payment_statuses = $conn->query("SELECT * FROM Tbl_Payment_Status")->fetch_all(MYSQLI_ASSOC);
 
@@ -413,11 +360,8 @@ $conn->close();
   .slip-modal-body {
     padding: 2rem;
     max-height: calc(90vh - 100px);
-    overflow-y: auto.
+    overflow-y: auto;
   }
-
-  /* >>> ADD: override แก้จุดพิมพ์ผิด 'overflow-y: auto.' ให้ทำงานถูกต้อง โดยไม่แก้ของเดิม */
-  .slip-modal-body { overflow-y: auto; }
 
   .slip-image-container {
     text-align: center;
@@ -483,7 +427,6 @@ $conn->close();
   table td { vertical-align: middle; }
   .payment-cell { min-width: 140px; }
 
-  /* ปุ่มลบแบบใหม่ */
   .btn-delete {
     background: linear-gradient(135deg, #dc2626, #991b1b);
     color: white;
@@ -534,7 +477,6 @@ $conn->close();
   </div>
 </header>
 
-<!-- >>> ADD: แถบแจ้งโหมด type_admin -->
 <?php if ($IS_TYPE_ADMIN): ?>
 <div class="container mx-auto px-4 mt-4">
   <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-800 p-4 rounded-lg shadow-md">
@@ -544,7 +486,6 @@ $conn->close();
 </div>
 <?php endif; ?>
 
-<!-- Success/Error Messages -->
 <?php if ($success_message): ?>
 <div class="container mx-auto px-4 mt-4">
   <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-md animate-pulse">
@@ -561,7 +502,6 @@ $conn->close();
 </div>
 <?php endif; ?>
 
-<!-- Main Content -->
 <div class="container mx-auto px-4 py-8">
   <div class="glass-card p-6 mb-6">
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -573,7 +513,6 @@ $conn->close();
       </a>
     </div>
 
-    <!-- Filters -->
     <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
       <input type="text" name="search" placeholder="🔍 ค้นหา: ลูกค้า / สนาม / เบอร์" 
              value="<?php echo htmlspecialchars($search); ?>"
@@ -611,7 +550,6 @@ $conn->close();
       </a>
     </form>
 
-    <!-- Table -->
     <div class="overflow-x-auto">
       <?php if (empty($bookings)): ?>
         <div class="text-center py-12 text-gray-500">
@@ -785,7 +723,6 @@ $conn->close();
       <span class="close-modal" onclick="closeSlipModal()">&times;</span>
     </div>
     <div class="slip-modal-body">
-      <!-- Booking Info -->
       <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg">
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div>
@@ -803,7 +740,6 @@ $conn->close();
         </div>
       </div>
 
-      <!-- Slip Image -->
       <div class="slip-image-container">
         <img id="slipImage" src="" alt="Payment Slip" class="slip-image">
       </div>
@@ -822,9 +758,7 @@ $conn->close();
 </div>
 
 <script>
-// Edit Modal Functions
 function openEditModal(booking) {
-  console.log('Opening edit modal for:', booking);
   document.getElementById('edit_booking_id').value = booking.BookingID;
   document.getElementById('display_booking_id').value = '#' + booking.BookingID;
   document.getElementById('edit_booking_status').value = booking.BookingStatusID;
@@ -838,19 +772,11 @@ function closeEditModal() {
   document.body.style.overflow = 'auto';
 }
 
-// Slip Modal Functions
 function viewSlip(slipPath, bookingId, venueName, amount) {
-  console.log('Opening slip modal:', {slipPath, bookingId, venueName, amount});
-  
-  // Set booking info
   document.getElementById('slip_booking_id').textContent = bookingId;
   document.getElementById('slip_venue_name').textContent = venueName;
   document.getElementById('slip_amount').textContent = parseFloat(amount).toFixed(2);
-  
-  // Set slip image
   document.getElementById('slipImage').src = slipPath;
-  
-  // Show modal
   document.getElementById('slipModal').style.display = 'block';
   document.body.style.overflow = 'hidden';
 }
@@ -860,7 +786,6 @@ function closeSlipModal() {
   document.body.style.overflow = 'auto';
 }
 
-// ฟังก์ชันยืนยันการลบ (ใหม่)
 function confirmDelete(bookingId) {
   const message = `🗑️ ต้องการลบการจองนี้ออกจากระบบหรือไม่?\n\n` +
                   `📌 Booking ID: #${bookingId}\n\n` +
@@ -874,7 +799,6 @@ function confirmDelete(bookingId) {
   }
 }
 
-// Close modals when clicking outside
 window.onclick = function(event) {
   const editModal = document.getElementById('editModal');
   const slipModal = document.getElementById('slipModal');
@@ -882,7 +806,6 @@ window.onclick = function(event) {
   if (event.target == slipModal) closeSlipModal();
 }
 
-// Prevent event bubbling on modal content
 document.addEventListener('DOMContentLoaded', function() {
   const modalContents = document.querySelectorAll('.modal-content');
   modalContents.forEach(function(content) {
@@ -897,10 +820,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </html>
 
 <?php
-/* >>> ADD (สำคัญ): คืนค่า role เดิม ถ้าสวมบท employee ชั่วคราวไว้ในหน้านี้ <<< */
+/* >>> ADD: คืนค่า role เดิม */
 if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
     $_SESSION['role'] = 'type_admin';
     unset($_SESSION['role_backup_for_type_admin']);
 }
-/* <<< END ADD */
 ?>
