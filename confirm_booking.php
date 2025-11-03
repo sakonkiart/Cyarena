@@ -15,6 +15,7 @@ function render_booking_result_ui(array $opt = []) {
     $back_url      = $opt['back_url']      ?? 'booking.php';
     $calendar_url  = $opt['calendar_url']  ?? null;
     $dashboard_url = $opt['dashboard_url'] ?? 'dashboard.php';
+    $my_bookings_url = $opt['my_bookings_url'] ?? 'my_bookings.php';
     ?>
 <!doctype html>
 <html lang="th">
@@ -299,6 +300,17 @@ function render_booking_result_ui(array $opt = []) {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
     }
+
+    .btn-success-modern {
+      background: linear-gradient(135deg, var(--success-500), var(--success-600));
+      color: white;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+    }
+    
+    .btn-success-modern:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+    }
     
     .btn-outline-modern {
       background: white;
@@ -413,16 +425,24 @@ function render_booking_result_ui(array $opt = []) {
       <?php endif; ?>
       
       <div class="btn-group">
+        <?php if ($status === 'success' && $my_bookings_url): ?>
+          <a href="<?= htmlspecialchars($my_bookings_url) ?>" class="btn-modern btn-success-modern">
+            <span>💳 ไปหน้าชำระเงิน</span>
+          </a>
+        <?php endif; ?>
+        
         <?php if ($back_url): ?>
           <a href="<?= htmlspecialchars($back_url) ?>" class="btn-modern btn-primary-modern">
             <span>🎯 ลองเลือกเวลาใหม่</span>
           </a>
         <?php endif; ?>
+        
         <?php if ($calendar_url): ?>
           <a href="<?= htmlspecialchars($calendar_url) ?>" class="btn-modern btn-outline-modern">
             <span>📅 ดูปฏิทินสนาม</span>
           </a>
         <?php endif; ?>
+        
         <a href="<?= htmlspecialchars($dashboard_url) ?>" class="btn-modern btn-light-modern">
           <span>🏠 ไปหน้า Dashboard</span>
         </a>
@@ -556,13 +576,13 @@ if ($endDT <= $startDT) {
     ]);
 }
 
-/* ================== อยู่ในช่วงเวลาเปิด–ปิดสนาม ================== */
+/* ================== อยู่ในช่วงเวลาเปิด—ปิดสนาม ================== */
 $openDT  = DateTime::createFromFormat('Y-m-d H:i:s', $selDate->format('Y-m-d').' '.$venueRow['TimeOpen'],  $tz);
 $closeDT = DateTime::createFromFormat('Y-m-d H:i:s', $selDate->format('Y-m-d').' '.$venueRow['TimeClose'], $tz);
 if (!$openDT || !$closeDT) {
     render_booking_result_ui([
-        'status'=>'error','title'=>'เวลาเปิด–ปิดไม่ถูกต้อง',
-        'message'=>'ข้อมูลเวลาเปิด–ปิดของสนามผิดรูปแบบ',
+        'status'=>'error','title'=>'เวลาเปิด—ปิดไม่ถูกต้อง',
+        'message'=>'ข้อมูลเวลาเปิด—ปิดของสนามผิดรูปแบบ',
         'back_url'=>$back
     ]);
 }
@@ -733,6 +753,7 @@ $_SESSION['last_venue_id'] = (int)$venue_id;
 // ลิงก์สำหรับย้อนกลับ/ดูปฏิทิน
 $back_url      = 'booking.php?' . http_build_query(['venue_id' => (int)$venue_id]);
 $calendar_url  = 'bookings_calendar.php?' . http_build_query(['venue_id' => (int)$venue_id]);
+$my_bookings_url = 'my_bookings.php';
 
 if ($ins->execute()) {
     $venueName = $venueRow['VenueName'] ?? '-';
@@ -746,13 +767,14 @@ if ($ins->execute()) {
         'message'      => "สนาม: {$venueName}\nวันที่: {$dateText}\nเวลา: {$timeStart} - {$timeEnd}\nยอดชำระ: ฿" . number_format($netPrice, 2),
         'back_url'     => $back_url,
         'calendar_url' => $calendar_url,
+        'my_bookings_url' => $my_bookings_url,
     ]);
 } else {
     render_booking_result_ui([
         'status'   => 'error',
         'title'    => 'บันทึกการจองไม่สำเร็จ',
         'message'  => 'เกิดข้อผิดพลาดทางเทคนิค กรุณาลองใหม่อีกครั้ง',
-        'back_url' => $back_url, // ใช้ลิงก์เดียวกัน กลับไปเลือกเวลาใหม่
+        'back_url' => $back_url,
     ]);
 }
 
