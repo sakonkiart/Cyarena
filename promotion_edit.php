@@ -40,7 +40,7 @@ register_shutdown_function(function () {
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
-?>
+
 
 // ✅ ตรวจสอบว่ามี id ที่จะใช้แก้ไขไหม
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
