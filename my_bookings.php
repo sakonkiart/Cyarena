@@ -30,7 +30,6 @@ if ($avatarPath && _exists_rel($avatarPath)) {
 if (isset($_GET['cancel_booking']) && is_numeric($_GET['cancel_booking'])) {
     $booking_id = intval($_GET['cancel_booking']);
     
-    // ตรวจสอบว่าเป็นการจองของลูกค้าคนนี้จริง และยังไม่ได้ยกเลิก
     $check_sql = "SELECT BookingID, BookingStatusID, StartTime FROM Tbl_Booking 
                   WHERE BookingID = ? AND CustomerID = ? AND BookingStatusID NOT IN (3, 4)";
     $check_stmt = $conn->prepare($check_sql);
@@ -43,11 +42,9 @@ if (isset($_GET['cancel_booking']) && is_numeric($_GET['cancel_booking'])) {
         $start_time = new DateTime($booking['StartTime']);
         $now = new DateTime();
         
-        // ตรวจสอบว่ายังไม่เกินเวลาจอง (ยกเลิกได้ก่อนเวลาเริ่มอย่างน้อย 1 ชั่วโมง)
         $diff_hours = ($start_time->getTimestamp() - $now->getTimestamp()) / 3600;
         
         if ($diff_hours >= 1) {
-            // อัปเดตสถานะเป็นยกเลิก (BookingStatusID = 3)
             $cancel_sql = "UPDATE Tbl_Booking SET BookingStatusID = 3 WHERE BookingID = ?";
             $cancel_stmt = $conn->prepare($cancel_sql);
             $cancel_stmt->bind_param("i", $booking_id);
@@ -76,14 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
     $slip_path = null;
     $has_error = false;
     
-    // 1. ตรวจสอบว่ามีการอัปโหลดไฟล์และดำเนินการอัปโหลด
     if (isset($_FILES['payment_slip']) && $_FILES['payment_slip']['error'] === UPLOAD_ERR_OK) {
         
-        // ===== กำหนด Path สำหรับอัปโหลด =====
-        $uploadWeb = 'uploads/payment_slips';            // ใช้เก็บลง DB/แสดงผล
-        $uploadAbs = __DIR__ . '/' . $uploadWeb;        // path จริงบนเครื่อง
+        $uploadWeb = 'uploads/payment_slips';
+        $uploadAbs = __DIR__ . '/' . $uploadWeb;
 
-        // สร้างโฟลเดอร์ถ้ายังไม่มี + ตั้งสิทธิ์ (Best Effort)
         if (!is_dir($uploadAbs)) {
             mkdir($uploadAbs, 0775, true);
         }
@@ -97,51 +91,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
         if (in_array($file_extension, $allowed_extensions, true)) {
             $new_filename = 'slip_' . (int)$booking_id . '_' . time() . '.' . $file_extension;
             $abs_path = $uploadAbs . '/' . $new_filename;
-            $slip_path = $uploadWeb . '/' . $new_filename; // Path ที่จะเก็บลง DB
+            $slip_path = $uploadWeb . '/' . $new_filename;
             
             if (!move_uploaded_file($_FILES['payment_slip']['tmp_name'], $abs_path)) {
-                // อัปโหลดไม่สำเร็จ
                 $_SESSION['error_message'] = "❌ ไม่สามารถอัปโหลดสลิปได้ (เขียนไฟล์ไม่สำเร็จ)";
                 $has_error = true;
             }
         } else {
-            // ไฟล์ไม่ถูกต้อง
             $_SESSION['error_message'] = "❌ รองรับเฉพาะไฟล์ JPG, JPEG, PNG, WEBP หรือ PDF เท่านั้น";
             $has_error = true;
         }
     } 
     
-    // 2. อัปเดตสถานะการชำระเงินและ PaymentSlipPath (ถ้ามีและไม่มี Error)
     if (!$has_error) {
         
-        // กำหนด SQL statement: ถ้ามี $slip_path ให้เพิ่มคอลัมน์ PaymentSlipPath เข้าไปด้วย
         $update_sql = "UPDATE Tbl_Booking SET PaymentStatusID = 2" . 
                       ($slip_path ? ", PaymentSlipPath = ?" : "") . 
                       " WHERE BookingID = ? AND CustomerID = ?";
         
         $update_stmt = $conn->prepare($update_sql);
 
-        // Binding parameters
         if ($slip_path) {
-            // ผูก $slip_path (s), $booking_id (i), $customer_id (i)
             $update_stmt->bind_param("sii", $slip_path, $booking_id, $customer_id);
         } else {
-            // ผูก $booking_id (i), $customer_id (i) เท่านั้น
             $update_stmt->bind_param("ii", $booking_id, $customer_id);
         }
         
         if ($update_stmt->execute()) {
-            // อัปเดตสำเร็จ
             $message_suffix = $slip_path ? " (พร้อมสลิป)" : " (รอตรวจสอบการโอน)";
             $_SESSION['success_message'] = "✅ ยืนยันการชำระเงินสำเร็จ! Booking ID: #$booking_id" . $message_suffix;
         } else {
-            // อัปเดตสถานะไม่สำเร็จ
             $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดตสถานะ: " . $update_stmt->error;
         }
         $update_stmt->close();
     }
     
-    // 3. Redirect กลับไปหน้าเดิมเสมอ
     header("Location: my_bookings.php");
     exit;
 }
@@ -150,6 +134,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
 $success_message = $_SESSION['success_message'] ?? '';
 $error_message = $_SESSION['error_message'] ?? '';
 unset($_SESSION['success_message'], $_SESSION['error_message']);
+
+// ตรวจสอบว่ามีการส่ง auto_pay มาหรือไม่
+$auto_pay_booking_id = isset($_GET['auto_pay']) ? intval($_GET['auto_pay']) : null;
+$auto_pay_amount = isset($_GET['amount']) ? floatval($_GET['amount']) : null;
 
 // ดึงข้อมูลการจองทั้งหมดของลูกค้า
 $sql = "SELECT 
@@ -171,7 +159,6 @@ $result = $stmt->get_result();
 $bookings = [];
 if ($result && $result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
-        // Check review status
         $sql_review = "SELECT ReviewID FROM Tbl_Review WHERE BookingID = ?";
         $stmt_review = $conn->prepare($sql_review);
         $stmt_review->bind_param("i", $row['BookingID']);
@@ -180,7 +167,6 @@ if ($result && $result->num_rows > 0) {
         $row['ReviewDone'] = $review_result->num_rows > 0;
         $stmt_review->close();
 
-        // Check if can cancel (at least 1 hour before start time)
         $start_time = new DateTime($row['StartTime']);
         $now = new DateTime();
         $diff_hours = ($start_time->getTimestamp() - $now->getTimestamp()) / 3600;
@@ -189,8 +175,6 @@ if ($result && $result->num_rows > 0) {
         $bookings[] = $row;
     }
 }
-
-$conn->close();
 
 function get_status_class($status_name) {
     $class_map = [
@@ -226,7 +210,6 @@ function get_status_class($status_name) {
     max-width: 1200px;
   }
 
-  /* Navbar Styles - Blue Theme */
   ._header_nav a {
     transition: color 0.2s, background-color 0.2s;
   }
@@ -301,7 +284,6 @@ function get_status_class($status_name) {
       background: linear-gradient(135deg, #dc2626, #b91c1c);
   }
 
-  /* QR Code Modal */
   .modal {
       display: none;
       position: fixed;
@@ -416,7 +398,6 @@ function get_status_class($status_name) {
 </head>
 <body>
 
-<!-- Header/Navbar - Blue Theme -->
 <header class="bg-white shadow-md sticky top-0 z-20 border-b-3 border-blue-500">
   <div class="container mx-auto flex justify-between items-center p-4">
     <div class="text-2xl font-bold text-blue-600">CY Arena</div>
@@ -435,66 +416,6 @@ function get_status_class($status_name) {
       <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden border-2 border-blue-500">
         <img src="<?php echo $avatarSrc; ?>" alt="User Avatar" class="w-full h-full object-cover">
       </div>
-      <a href="logout.php" class="text-red-500 hover:text-red-700 text-sm font-medium ml-4 hidden md:inline">
-        <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
-      </a>
-      <button class="burger-menu md:hidden text-gray-600 hover:text-blue-600 text-xl" onclick="toggleMenu()">
-        <i class="fas fa-bars"></i>
-      </button>
-    </div>
-  </div>
-</header>
-
-<nav id="mobile-menu" class="_header_nav md:hidden" style="display: none;">
-  <a href="dashboard.php">หน้าหลัก</a>
-  <a href="#my-bookings-section">การจองของฉัน</a>
-  <a href="my_reviews.php">รีวิวของฉัน</a>
-  <?php if ($role === 'admin'): ?>
-  <a href="admin.php">จัดการระบบ</a>
-  <?php endif; ?>
-  <a href="logout.php" class="text-red-500">ออกจากระบบ</a>
-</nav>
-
-<!-- Success/Error Messages -->
-<?php if ($success_message): ?>
-<div class="container mx-auto px-4 mt-4">
-    <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-md flex items-center animate-pulse">
-        <i class="fas fa-check-circle text-2xl mr-3"></i>
-        <p class="font-semibold"><?php echo htmlspecialchars($success_message); ?></p>
-    </div>
-</div>
-<?php endif; ?>
-
-<?php if ($error_message): ?>
-<div class="container mx-auto px-4 mt-4">
-    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-md flex items-center">
-        <i class="fas fa-exclamation-circle text-2xl mr-3"></i>
-        <p class="font-semibold"><?php echo htmlspecialchars($error_message); ?></p>
-    </div>
-</div>
-<?php endif; ?>
-
-<section id="my-bookings-section" class="py-8 md:py-16">
-  <div class="container mx-auto px-4">
-    <h2 class="text-3xl md:text-4xl font-bold text-center text-blue-700 mb-8 md:mb-12">ประวัติการจองของฉัน</h2>
-    
-    <?php if (empty($bookings)): ?>
-        <div class="bg-white rounded-xl shadow-lg p-10 text-center border-t-4 border-blue-500/50">
-            <i class="fas fa-calendar-alt text-blue-500 text-4xl mb-4"></i>
-            <p class="text-xl font-semibold text-gray-700">คุณยังไม่มีการจองในขณะนี้</p>
-            <p class="text-gray-500 mt-2">ไปค้นหาสนามและจองวันเวลาที่ต้องการได้เลย</p>
-            <a href="dashboard.php#venues" class="mt-5 inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition duration-300 shadow-md">
-                ค้นหาสนาม <i class="fas fa-arrow-right ml-2"></i>
-            </a>
-        </div>
-    <?php else: ?>
-    
-    <div class="bg-blue-50 border-l-4 border-blue-500 text-blue-800 p-4 mb-6 rounded-lg shadow-sm">
-        <div class="flex items-center">
-            <i class="fas fa-info-circle mr-3 text-lg"></i>
-            <p class="text-sm font-medium">สามารถ <span class="font-bold">ชำระเงิน</span> เมื่อสถานะ 'รอชำระ' | <span class="font-bold">ให้รีวิว</span> เมื่อ 'เข้าใช้บริการแล้ว' | <span class="font-bold text-red-600">ยกเลิก</span> ได้ก่อนเวลาเริ่ม 1 ชม.</p>
-        </div>
-    </div>
 
     <!-- DESKTOP TABLE VIEW -->
     <div class="booking-table-container hidden md:block bg-white rounded-xl shadow-lg border border-gray-200">
@@ -545,11 +466,9 @@ function get_status_class($status_name) {
             <td class="py-4 px-6">
               <div class="action-buttons">
               <?php
-                // ถ้ายกเลิกแล้ว ไม่แสดงปุ่มใดๆ
                 if ($row['BookingStatusID'] == 3) {
                     echo '<span class="text-red-600 font-semibold text-xs"><i class="fas fa-ban mr-1"></i> ยกเลิกแล้ว</span>';
                 }
-                // ถ้าเสร็จสิ้นแล้ว ไม่แสดงปุ่มใดๆ นอกจากรีวิว
                 elseif ($row['BookingStatusID'] == 4) {
                     if ($row['BookingStatus'] == 'เข้าใช้บริการแล้ว') {
                         if ($row['ReviewDone']) {
@@ -561,16 +480,13 @@ function get_status_class($status_name) {
                         }
                     }
                 }
-                // สถานะปกติ
                 else {
-                    // แสดงปุ่มชำระเฉพาะเมื่อรอชำระ
                     if ($row['PaymentStatus'] == 'รอชำระ' || $row['PaymentStatus'] == 'รอชำระเงิน') {
                         echo '<button onclick="openPaymentModal(' . $row['BookingID'] . ', ' . $row['TotalPrice'] . ')" class="pay-btn">
                                 <i class="fas fa-qrcode mr-1"></i> ชำระ
                               </button>';
                     }
                     
-                    // แสดงปุ่มรีวิวเมื่อเข้าใช้บริการแล้ว
                     if ($row['BookingStatus'] == 'เข้าใช้บริการแล้ว') {
                         if ($row['ReviewDone']) {
                             echo '<span class="text-blue-600 font-semibold flex items-center"><i class="fas fa-check-circle mr-1"></i> รีวิวแล้ว</span>';
@@ -581,7 +497,6 @@ function get_status_class($status_name) {
                         }
                     }
                     
-                    // แสดงปุ่มยกเลิก
                     if ($row['CanCancel']) {
                         echo '<a href="?cancel_booking=' . $row['BookingID'] . '" 
                                  onclick="return confirm(\'❌ ยืนยันการยกเลิกการจอง #' . $row['BookingID'] . '?\\n\\n⚠️ การยกเลิกจะไม่สามารถกู้คืนได้\')" 
@@ -590,7 +505,6 @@ function get_status_class($status_name) {
                               </a>';
                     }
                     
-                    // ถ้าไม่มีปุ่มใดๆ แสดง
                     if (!$row['CanCancel'] && 
                         ($row['PaymentStatus'] != 'รอชำระ' && $row['PaymentStatus'] != 'รอชำระเงิน') && 
                         $row['BookingStatus'] != 'เข้าใช้บริการแล้ว') {
@@ -606,126 +520,121 @@ function get_status_class($status_name) {
       </table>
     </div>
     
-    <!-- MOBILE CARD VIEW -->
-    <div class="booking-card-grid grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
-      <?php foreach ($bookings as $row): ?>
-      <div class="bg-white rounded-xl shadow-md p-4 border border-blue-100 hover:shadow-lg transition duration-300">
-        <div class="flex justify-between items-start mb-2 border-b pb-2">
-            <div>
-                <a href="venue_detail.php?id=<?php echo $row['VenueID']; ?>" class="text-lg font-bold text-blue-600 hover:text-blue-700 hover:underline">
-                    <?php echo htmlspecialchars($row['VenueName']); ?>
-                </a>
-                <p class="text-xs text-gray-500 mt-0.5">Booking ID: #<?php echo $row['BookingID']; ?></p>
-            </div>
-            <?php $booking_status = htmlspecialchars($row['BookingStatus']); ?>
-            <span class="status-badge <?php echo get_status_class($booking_status); ?> ml-2">
-                <?php echo $booking_status; ?>
-            </span>
-        </div>
-
-        <div class="space-y-2 text-sm">
-            <div class="flex items-center text-gray-700">
-                <i class="fas fa-calendar-alt w-5 text-blue-500"></i>
-                <span class="font-medium ml-2">วันที่:</span>
-                <span class="ml-auto"><?php echo date("d/m/Y", strtotime($row['StartTime'])); ?></span>
-            </div>
-            <div class="flex items-center text-gray-700">
-                <i class="fas fa-clock w-5 text-blue-500"></i>
-                <span class="font-medium ml-2">เวลา:</span>
-                <span class="ml-auto"><?php echo date("H:i", strtotime($row['StartTime'])); ?> - <?php echo date("H:i", strtotime($row['EndTime'])); ?></span>
-            </div>
-            <div class="flex items-center text-gray-700">
-                <i class="fas fa-hourglass-half w-5 text-blue-500"></i>
-                <span class="font-medium ml-2">ชั่วโมง:</span>
-                <span class="ml-auto"><?php echo $row['HoursBooked']; ?> ชม.</span>
-            </div>
-        </div>
-        
-        <hr class="my-3 border-gray-100">
-
-        <div class="space-y-2 text-sm">
-            <div class="flex justify-between items-center font-medium">
-                <div class="text-gray-600 flex items-center"><i class="fas fa-wallet w-5 text-gray-500"></i> สถานะชำระ:</div>
-                <?php $payment_status = htmlspecialchars($row['PaymentStatus']); ?>
-                <span class="status-badge <?php echo get_status_class($payment_status); ?> ml-2">
-                    <?php echo $payment_status; ?>
-                </span>
-            </div>
-            <div class="flex justify-between items-center text-lg font-extrabold text-blue-600 pt-1">
-                <div class="flex items-center"><i class="fas fa-money-bill-wave w-5 text-blue-600"></i> รวม:</div>
-                <span>฿<?php echo number_format($row['TotalPrice'], 2); ?></span>
-            </div>
-        </div>
-
-        <div class="mt-4 pt-4 border-t border-gray-100 space-y-2">
-            <?php
-                // ถ้ายกเลิกแล้ว ไม่แสดงปุ่มใดๆ
-                if ($row['BookingStatusID'] == 3) {
-                    echo '<span class="text-red-600 font-semibold flex items-center justify-center text-base">
-                            <i class="fas fa-ban mr-2"></i> การจองถูกยกเลิกแล้ว
-                          </span>';
-                }
-                // ถ้าเสร็จสิ้นแล้ว
-                elseif ($row['BookingStatusID'] == 4) {
-                    if ($row['BookingStatus'] == 'เข้าใช้บริการแล้ว') {
-                        if ($row['ReviewDone']) {
-                            echo '<span class="text-blue-600 font-semibold flex items-center justify-center text-base">
-                                    <i class="fas fa-check-circle mr-2"></i> รีวิวเรียบร้อย
-                                  </span>';
-                        } else {
-                            echo '<a href="review.php?booking_id=' . $row['BookingID'] . '" class="review-link-btn w-full justify-center">
-                                    <i class="fas fa-star mr-2"></i> ให้รีวิวสนาม
-                                  </a>';
-                        }
-                    }
-                }
-                // สถานะปกติ
-                else {
-                    // ปุ่มชำระเงิน
-                    if ($row['PaymentStatus'] == 'รอชำระ' || $row['PaymentStatus'] == 'รอชำระเงิน') {
-                        echo '<button onclick="openPaymentModal(' . $row['BookingID'] . ', ' . $row['TotalPrice'] . ')" class="pay-btn w-full justify-center">
-                                <i class="fas fa-qrcode mr-2"></i> ชำระเงิน
-                              </button>';
-                    }
-                    
-                    // ปุ่มรีวิว
-                    if ($row['BookingStatus'] == 'เข้าใช้บริการแล้ว') {
-                        if ($row['ReviewDone']) {
-                            echo '<span class="text-blue-600 font-semibold flex items-center justify-center text-base">
-                                    <i class="fas fa-check-circle mr-2"></i> รีวิวเรียบร้อย
-                                  </span>';
-                        } else {
-                            echo '<a href="review.php?booking_id=' . $row['BookingID'] . '" class="review-link-btn w-full justify-center">
-                                    <i class="fas fa-star mr-2"></i> ให้รีวิวสนาม
-                                  </a>';
-                        }
-                    }
-                    
-                    // ปุ่มยกเลิก
-                    if ($row['CanCancel']) {
-                        echo '<a href="?cancel_booking=' . $row['BookingID'] . '" 
-                                 onclick="return confirm(\'❌ ยืนยันการยกเลิกการจอง #' . $row['BookingID'] . '?\\n\\n⚠️ การยกเลิกจะไม่สามารถกู้คืนได้\\n💡 ทำได้ก่อนเวลาเริ่ม 1 ชั่วโมง\')" 
-                                 class="cancel-btn w-full justify-center">
-                                <i class="fas fa-times-circle mr-2"></i> ยกเลิกการจอง
-                              </a>';
-                    }
-                    
-                    // ถ้าไม่มีปุ่มใดๆ
-                    if (!$row['CanCancel'] && 
-                        ($row['PaymentStatus'] != 'รอชำระ' && $row['PaymentStatus'] != 'รอชำระเงิน') && 
-                        $row['BookingStatus'] != 'เข้าใช้บริการแล้ว') {
-                        echo '<span class="text-gray-400 text-center block text-sm">- ยังไม่สามารถดำเนินการได้ -</span>';
-                    }
-                }
-            ?>
-        </div>
-      </div>
-      <?php endforeach; ?>
-    </div>
-    
     <?php endif; ?>
   </div>
 </section>
+
+<!-- Mobile Card View - Add before closing section -->
+<div class="booking-card-grid grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden container mx-auto px-4 pb-8">
+  <?php if (!empty($bookings)): ?>
+    <?php foreach ($bookings as $row): ?>
+    <div class="bg-white rounded-xl shadow-md p-4 border border-blue-100 hover:shadow-lg transition duration-300">
+      <div class="flex justify-between items-start mb-2 border-b pb-2">
+          <div>
+              <a href="venue_detail.php?id=<?php echo $row['VenueID']; ?>" class="text-lg font-bold text-blue-600 hover:text-blue-700 hover:underline">
+                  <?php echo htmlspecialchars($row['VenueName']); ?>
+              </a>
+              <p class="text-xs text-gray-500 mt-0.5">Booking ID: #<?php echo $row['BookingID']; ?></p>
+          </div>
+          <?php $booking_status = htmlspecialchars($row['BookingStatus']); ?>
+          <span class="status-badge <?php echo get_status_class($booking_status); ?> ml-2">
+              <?php echo $booking_status; ?>
+          </span>
+      </div>
+
+      <div class="space-y-2 text-sm">
+          <div class="flex items-center text-gray-700">
+              <i class="fas fa-calendar-alt w-5 text-blue-500"></i>
+              <span class="font-medium ml-2">วันที่:</span>
+              <span class="ml-auto"><?php echo date("d/m/Y", strtotime($row['StartTime'])); ?></span>
+          </div>
+          <div class="flex items-center text-gray-700">
+              <i class="fas fa-clock w-5 text-blue-500"></i>
+              <span class="font-medium ml-2">เวลา:</span>
+              <span class="ml-auto"><?php echo date("H:i", strtotime($row['StartTime'])); ?> - <?php echo date("H:i", strtotime($row['EndTime'])); ?></span>
+          </div>
+          <div class="flex items-center text-gray-700">
+              <i class="fas fa-hourglass-half w-5 text-blue-500"></i>
+              <span class="font-medium ml-2">ชั่วโมง:</span>
+              <span class="ml-auto"><?php echo $row['HoursBooked']; ?> ชม.</span>
+          </div>
+      </div>
+      
+      <hr class="my-3 border-gray-100">
+
+      <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center font-medium">
+              <div class="text-gray-600 flex items-center"><i class="fas fa-wallet w-5 text-gray-500"></i> สถานะชำระ:</div>
+              <?php $payment_status = htmlspecialchars($row['PaymentStatus']); ?>
+              <span class="status-badge <?php echo get_status_class($payment_status); ?> ml-2">
+                  <?php echo $payment_status; ?>
+              </span>
+          </div>
+          <div class="flex justify-between items-center text-lg font-extrabold text-blue-600 pt-1">
+              <div class="flex items-center"><i class="fas fa-money-bill-wave w-5 text-blue-600"></i> รวม:</div>
+              <span>฿<?php echo number_format($row['TotalPrice'], 2); ?></span>
+          </div>
+      </div>
+
+      <div class="mt-4 pt-4 border-t border-gray-100 space-y-2">
+          <?php
+              if ($row['BookingStatusID'] == 3) {
+                  echo '<span class="text-red-600 font-semibold flex items-center justify-center text-base">
+                          <i class="fas fa-ban mr-2"></i> การจองถูกยกเลิกแล้ว
+                        </span>';
+              }
+              elseif ($row['BookingStatusID'] == 4) {
+                  if ($row['BookingStatus'] == 'เข้าใช้บริการแล้ว') {
+                      if ($row['ReviewDone']) {
+                          echo '<span class="text-blue-600 font-semibold flex items-center justify-center text-base">
+                                  <i class="fas fa-check-circle mr-2"></i> รีวิวเรียบร้อย
+                                </span>';
+                      } else {
+                          echo '<a href="review.php?booking_id=' . $row['BookingID'] . '" class="review-link-btn w-full justify-center">
+                                  <i class="fas fa-star mr-2"></i> ให้รีวิวสนาม
+                                </a>';
+                      }
+                  }
+              }
+              else {
+                  if ($row['PaymentStatus'] == 'รอชำระ' || $row['PaymentStatus'] == 'รอชำระเงิน') {
+                      echo '<button onclick="openPaymentModal(' . $row['BookingID'] . ', ' . $row['TotalPrice'] . ')" class="pay-btn w-full justify-center">
+                              <i class="fas fa-qrcode mr-2"></i> ชำระเงิน
+                            </button>';
+                  }
+                  
+                  if ($row['BookingStatus'] == 'เข้าใช้บริการแล้ว') {
+                      if ($row['ReviewDone']) {
+                          echo '<span class="text-blue-600 font-semibold flex items-center justify-center text-base">
+                                  <i class="fas fa-check-circle mr-2"></i> รีวิวเรียบร้อย
+                                </span>';
+                      } else {
+                          echo '<a href="review.php?booking_id=' . $row['BookingID'] . '" class="review-link-btn w-full justify-center">
+                                  <i class="fas fa-star mr-2"></i> ให้รีวิวสนาม
+                                </a>';
+                      }
+                  }
+                  
+                  if ($row['CanCancel']) {
+                      echo '<a href="?cancel_booking=' . $row['BookingID'] . '" 
+                               onclick="return confirm(\'❌ ยืนยันการยกเลิกการจอง #' . $row['BookingID'] . '?\\n\\n⚠️ การยกเลิกจะไม่สามารถกู้คืนได้\\n💡 ทำได้ก่อนเวลาเริ่ม 1 ชั่วโมง\')" 
+                               class="cancel-btn w-full justify-center">
+                              <i class="fas fa-times-circle mr-2"></i> ยกเลิกการจอง
+                            </a>';
+                  }
+                  
+                  if (!$row['CanCancel'] && 
+                      ($row['PaymentStatus'] != 'รอชำระ' && $row['PaymentStatus'] != 'รอชำระเงิน') && 
+                      $row['BookingStatus'] != 'เข้าใช้บริการแล้ว') {
+                      echo '<span class="text-gray-400 text-center block text-sm">- ยังไม่สามารถดำเนินการได้ -</span>';
+                  }
+              }
+          ?>
+      </div>
+    </div>
+    <?php endforeach; ?>
+  <?php endif; ?>
+</div>
 
 <!-- QR Code Payment Modal -->
 <div id="paymentModal" class="modal">
@@ -754,7 +663,6 @@ function get_status_class($status_name) {
       <input type="hidden" name="booking_id" id="bookingIdInput">
       <input type="hidden" name="confirm_payment" value="1">
       
-      <!-- Slip Upload Section -->
       <div class="bg-gray-50 p-3 rounded-lg mb-3 border-2 border-dashed border-gray-300">
         <label class="block text-xs font-bold text-gray-700 mb-2">
           <i class="fas fa-paperclip mr-1"></i>แนบสลิปการโอนเงิน (ไม่บังคับ)
@@ -774,7 +682,6 @@ function get_status_class($status_name) {
           <i class="fas fa-info-circle mr-1"></i>รองรับ JPG, PNG, PDF (ไม่เกิน 5MB)
         </p>
         
-        <!-- Preview Area -->
         <div id="slipPreview" class="mt-2 hidden">
           <p class="text-xs text-green-600 font-semibold mb-1">
             <i class="fas fa-check-circle mr-1"></i>เลือกไฟล์แล้ว:
@@ -811,10 +718,8 @@ function openPaymentModal(bookingId, amount) {
   document.getElementById('bookingIdDisplay').textContent = bookingId;
   document.getElementById('paymentAmount').textContent = amount.toFixed(2);
   
-  // ใช้ PromptPay QR Code ของคุณ
   document.getElementById('qrCodeImage').src = 'images/promptpay-qr.png';
   
-  // Clear previous slip selection
   document.getElementById('payment_slip').value = '';
   document.getElementById('slipPreview').classList.add('hidden');
   
@@ -822,7 +727,6 @@ function openPaymentModal(bookingId, amount) {
   modal.style.display = 'block';
   document.body.style.overflow = 'hidden';
   
-  // Scroll modal to top
   setTimeout(() => {
     const modalContent = modal.querySelector('.modal-content');
     if (modalContent) {
@@ -836,8 +740,32 @@ function closePaymentModal() {
   document.body.style.overflow = 'auto';
 }
 
-// Handle slip file selection
+// เปิด Modal อัตโนมัติถ้ามีการส่ง parameter auto_pay มา
 document.addEventListener('DOMContentLoaded', function() {
+  <?php if ($auto_pay_booking_id && $auto_pay_amount): ?>
+    <?php 
+    $verify_sql = "SELECT BookingID FROM Tbl_Booking 
+                   WHERE BookingID = ? AND CustomerID = ? AND PaymentStatusID = 1";
+    $verify_stmt = $conn->prepare($verify_sql);
+    $verify_stmt->bind_param("ii", $auto_pay_booking_id, $customer_id);
+    $verify_stmt->execute();
+    $verify_result = $verify_stmt->get_result();
+    if ($verify_result->num_rows > 0): 
+    ?>
+      setTimeout(function() {
+        openPaymentModal(<?= $auto_pay_booking_id ?>, <?= $auto_pay_amount ?>);
+        
+        const bookingsSection = document.getElementById('my-bookings-section');
+        if (bookingsSection) {
+          bookingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 500);
+    <?php 
+    endif;
+    $verify_stmt->close();
+    ?>
+  <?php endif; ?>
+  
   const slipInput = document.getElementById('payment_slip');
   
   if (slipInput) {
@@ -847,7 +775,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const fileName = document.getElementById('fileName');
       
       if (file) {
-        // Check file size (5MB max)
         if (file.size > 5 * 1024 * 1024) {
           alert('❌ ไฟล์มีขนาดใหญ่เกิน 5MB กรุณาเลือกไฟล์ใหม่');
           e.target.value = '';
@@ -869,7 +796,6 @@ function clearSlip() {
   document.getElementById('slipPreview').classList.add('hidden');
 }
 
-// Close modal when clicking outside
 window.onclick = function(event) {
   const modal = document.getElementById('paymentModal');
   if (event.target == modal) {
@@ -878,5 +804,66 @@ window.onclick = function(event) {
 }
 </script>
 
+<?php $conn->close(); ?>
+
 </body>
 </html>
+      <a href="logout.php" class="text-red-500 hover:text-red-700 text-sm font-medium ml-4 hidden md:inline">
+        <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+      </a>
+      <button class="burger-menu md:hidden text-gray-600 hover:text-blue-600 text-xl" onclick="toggleMenu()">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </div>
+</header>
+
+<nav id="mobile-menu" class="_header_nav md:hidden" style="display: none;">
+  <a href="dashboard.php">หน้าหลัก</a>
+  <a href="#my-bookings-section">การจองของฉัน</a>
+  <a href="my_reviews.php">รีวิวของฉัน</a>
+  <?php if ($role === 'admin'): ?>
+  <a href="admin.php">จัดการระบบ</a>
+  <?php endif; ?>
+  <a href="logout.php" class="text-red-500">ออกจากระบบ</a>
+</nav>
+
+<?php if ($success_message): ?>
+<div class="container mx-auto px-4 mt-4">
+    <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-md flex items-center animate-pulse">
+        <i class="fas fa-check-circle text-2xl mr-3"></i>
+        <p class="font-semibold"><?php echo htmlspecialchars($success_message); ?></p>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($error_message): ?>
+<div class="container mx-auto px-4 mt-4">
+    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-md flex items-center">
+        <i class="fas fa-exclamation-circle text-2xl mr-3"></i>
+        <p class="font-semibold"><?php echo htmlspecialchars($error_message); ?></p>
+    </div>
+</div>
+<?php endif; ?>
+
+<section id="my-bookings-section" class="py-8 md:py-16">
+  <div class="container mx-auto px-4">
+    <h2 class="text-3xl md:text-4xl font-bold text-center text-blue-700 mb-8 md:mb-12">ประวัติการจองของฉัน</h2>
+    
+    <?php if (empty($bookings)): ?>
+        <div class="bg-white rounded-xl shadow-lg p-10 text-center border-t-4 border-blue-500/50">
+            <i class="fas fa-calendar-alt text-blue-500 text-4xl mb-4"></i>
+            <p class="text-xl font-semibold text-gray-700">คุณยังไม่มีการจองในขณะนี้</p>
+            <p class="text-gray-500 mt-2">ไปค้นหาสนามและจองวันเวลาที่ต้องการได้เลย</p>
+            <a href="dashboard.php#venues" class="mt-5 inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition duration-300 shadow-md">
+                ค้นหาสนาม <i class="fas fa-arrow-right ml-2"></i>
+            </a>
+        </div>
+    <?php else: ?>
+    
+    <div class="bg-blue-50 border-l-4 border-blue-500 text-blue-800 p-4 mb-6 rounded-lg shadow-sm">
+        <div class="flex items-center">
+            <i class="fas fa-info-circle mr-3 text-lg"></i>
+            <p class="text-sm font-medium">สามารถ <span class="font-bold">ชำระเงิน</span> เมื่อสถานะ 'รอชำระ' | <span class="font-bold">ให้รีวิว</span> เมื่อ 'เข้าใช้บริการแล้ว' | <span class="font-bold text-red-600">ยกเลิก</span> ได้ก่อนเวลาเริ่ม 1 ชม.</p>
+        </div>
+    </div>
