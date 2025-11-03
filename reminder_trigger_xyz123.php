@@ -40,7 +40,7 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
         // 📧 แก้ไข: Gmail Address ของคุณ (ใช้ค่าจริงของคุณ)
         $mail->Username   = 'valorantwhq2548@gmail.com'; 
         // 🔑 แก้ไข: App Password 16 หลัก (ใช้ค่าจริงของคุณ)
-        $mail->Password   = 'flim210845';          
+        $mail->Password   = 'ikkp oihu jyzy jbzj';          
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
         
