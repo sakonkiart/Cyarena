@@ -312,7 +312,7 @@ $conn->close();
   .slip-modal-body {
     padding: 2rem;
     max-height: calc(90vh - 100px);
-    overflow-y: auto;
+    overflow-y: auto.
   }
 
   .slip-image-container {
@@ -766,7 +766,6 @@ function closeSlipModal() {
 
 // ฟังก์ชันยืนยันการลบ (ใหม่)
 function confirmDelete(bookingId) {
-  // สร้าง custom confirmation dialog
   const message = `🗑️ ต้องการลบการจองนี้ออกจากระบบหรือไม่?\n\n` +
                   `📌 Booking ID: #${bookingId}\n\n` +
                   `⚠️ คำเตือน:\n` +
@@ -774,9 +773,7 @@ function confirmDelete(bookingId) {
                   `• ไม่สามารถกู้คืนข้อมูลได้\n` +
                   `• หากต้องการเก็บประวัติ ให้ใช้ "ยกเลิก" แทน\n\n` +
                   `❓ ยืนยันการลบ?`;
-  
   if (confirm(message)) {
-    // Redirect to delete URL
     window.location.href = `?delete=${bookingId}`;
   }
 }
@@ -785,13 +782,8 @@ function confirmDelete(bookingId) {
 window.onclick = function(event) {
   const editModal = document.getElementById('editModal');
   const slipModal = document.getElementById('slipModal');
-  
-  if (event.target == editModal) {
-    closeEditModal();
-  }
-  if (event.target == slipModal) {
-    closeSlipModal();
-  }
+  if (event.target == editModal) closeEditModal();
+  if (event.target == slipModal) closeSlipModal();
 }
 
 // Prevent event bubbling on modal content
@@ -807,3 +799,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 </body>
 </html>
+
+<?php
+/* >>> ADD (สำคัญ): คืนค่า role เดิม ถ้าสวมบท employee ชั่วคราวไว้ในหน้านี้ <<< */
+if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
+    $_SESSION['role'] = 'type_admin';
+    unset($_SESSION['role_backup_for_type_admin']);
+}
+/* <<< END ADD */
+?>
