@@ -70,6 +70,24 @@ function _restore_type_admin_role_before_redirect(): void {
     }
 }
 
+/* >>> ADD: ฟังก์ชันเรียก trigger อีเมลยืนยันการจอง */
+function _trigger_confirmation_email(int $booking_id): void {
+    $secret_token = "your_ultra_secret_cron_key_98765"; // ต้องตรงกับที่ตั้งใน reminder_trigger_xyz123.php
+    $base_url = "https://cyarena.onrender.com"; // ⚠️ เปลี่ยนเป็น URL จริงของคุณ
+    
+    $trigger_url = "{$base_url}/reminder_trigger_xyz123.php?token={$secret_token}&booking_id={$booking_id}";
+    
+    // ใช้ file_get_contents แบบ async (ไม่รอผลลัพธ์)
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 1, // timeout เร็วเพื่อไม่ให้หน้าช้า
+            'ignore_errors' => true
+        ]
+    ]);
+    
+    @file_get_contents($trigger_url, false, $context);
+}
+
 /* >>> ADD: ฟังก์ชันตรวจสอบสิทธิ์ของ type_admin ว่าสามารถจัดการ booking นี้ได้หรือไม่ */
 function _type_admin_can_manage(mysqli $conn, int $booking_id, int $vtid): bool {
     if ($vtid <= 0) return false;
@@ -102,7 +120,7 @@ if (
     // ถ้าเป็น type_admin ต้องยืนยันสิทธิ์ตามประเภทสนามก่อน
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $bid, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์จัดการการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
-        _restore_type_admin_role_before_redirect(); /* >>> ADD */
+        _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
         exit;
     }
@@ -129,10 +147,15 @@ if (
             $st->execute();
             $st->close();
             $_SESSION['success_message'] = "$msg (#{$bid})";
+            
+            // >>> ADD: ส่งอีเมลยืนยันเมื่อกด confirm
+            if ($op === 'confirm') {
+                _trigger_confirmation_email($bid);
+            }
         } else {
             $_SESSION['error_message'] = "❌ ไม่สามารถเตรียมคำสั่งได้";
         }
-        _restore_type_admin_role_before_redirect(); /* >>> ADD */
+        _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
         exit;
     }
@@ -149,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     if ($IS_TYPE_ADMIN) {
         if (!_type_admin_can_manage($conn, $booking_id, $TYPE_ADMIN_VTID)) {
             $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์แก้ไขการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
-            _restore_type_admin_role_before_redirect(); /* >>> ADD */
+            _restore_type_admin_role_before_redirect();
             header("Location: manage_bookings.php");
             exit;
         }
@@ -160,6 +183,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
             $stmt->bind_param("iii", $booking_status, $payment_status, $booking_id);
             if ($stmt->execute()) {
                 $_SESSION['success_message'] = "✅ อัปเดตสถานะเรียบร้อยแล้ว! (Booking #$booking_id)";
+                
+                // >>> ADD: ส่งอีเมลยืนยันเมื่ออัปเดตเป็นสถานะ "ยืนยันแล้ว" (BookingStatusID = 2)
+                if ($booking_status == 2) {
+                    _trigger_confirmation_email($booking_id);
+                }
             } else {
                 $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดต: " . $stmt->error;
             }
@@ -167,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         } else {
             $_SESSION['error_message'] = "❌ ไม่สามารถเตรียมคำสั่งอัปเดตได้";
         }
-        _restore_type_admin_role_before_redirect(); /* >>> ADD */
+        _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
         exit; // กันไม่ให้ไหลไปใช้โค้ดเดิมของ employee ด้านล่าง
     }
@@ -181,11 +209,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     
     if ($stmt->execute()) {
         $_SESSION['success_message'] = "✅ อัปเดตสถานะเรียบร้อยแล้ว! (Booking #$booking_id)";
+        
+        // >>> ADD: ส่งอีเมลยืนยันเมื่ออัปเดตเป็นสถานะ "ยืนยันแล้ว" (BookingStatusID = 2)
+        if ($booking_status == 2) {
+            _trigger_confirmation_email($booking_id);
+        }
     } else {
         $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดต: " . $stmt->error;
     }
     $stmt->close();
-    _restore_type_admin_role_before_redirect(); /* >>> ADD */
+    _restore_type_admin_role_before_redirect();
     header("Location: manage_bookings.php");
     exit;
 }
@@ -197,14 +230,14 @@ if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
     /* >>> ADD: ป้องกัน type_admin ยกเลิกข้ามประเภทสนาม */
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $cancel_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ยกเลิกการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
-        _restore_type_admin_role_before_redirect(); /* >>> ADD */
+        _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
         exit;
     }
 
     $conn->query("UPDATE Tbl_Booking SET BookingStatusID = 3 WHERE BookingID = $cancel_id");
     $_SESSION['success_message'] = "✅ ยกเลิกการจองเรียบร้อยแล้ว! (Booking #$cancel_id)";
-    _restore_type_admin_role_before_redirect(); /* >>> ADD */
+    _restore_type_admin_role_before_redirect();
     header("Location: manage_bookings.php");
     exit;
 }
@@ -216,7 +249,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     /* >>> ADD: ป้องกัน type_admin ลบข้ามประเภทสนาม */
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $delete_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ลบการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
-        _restore_type_admin_role_before_redirect(); /* >>> ADD */
+        _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
         exit;
     }
@@ -233,7 +266,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     }
     $stmt->close();
     
-    _restore_type_admin_role_before_redirect(); /* >>> ADD */
+    _restore_type_admin_role_before_redirect();
     header("Location: manage_bookings.php");
     exit;
 }
