@@ -1,46 +1,28 @@
 <?php
 session_start();
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
-    header("Location: login.php");
-    exit;
-}
 
-include 'db_connect.php';
-if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
-
-// ถ้าไม่ล็อกอินให้ไปหน้า login
+// ตรวจสอบว่าล็อกอินหรือไม่
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
 }
 
-// อนุญาตเฉพาะ super admin เท่านั้น (รองรับได้หลายชื่อ role เผื่อโปรเจ็กต์สะกดต่างกัน)
-$__ROLE = $_SESSION['role'] ?? '';
-$__IS_SUPER = in_array($__ROLE, ['superadmin', 'super_admin', 'super']);
+// ✅ อนุญาตเฉพาะ super admin เท่านั้น (ไม่มี role swap)
+$role = $_SESSION['role'] ?? '';
+$is_super_admin = in_array($role, ['superadmin', 'super_admin', 'super']);
 
-if (!$__IS_SUPER) {
-    http_response_code(403);
-    echo "❌ ไม่มีสิทธิ์";
+if (!$is_super_admin) {
+    $_SESSION['error_message'] = '❌ คุณไม่มีสิทธิ์แก้ไขโปรโมชั่น (เฉพาะ Superadmin)';
+    header("Location: dashboard.php");
     exit;
 }
 
-// สวมบทชั่วคราวเป็น employee เพื่อให้ผ่านโค้ดเดิมที่ตรวจ role = 'employee'
-$_SESSION['__role_backup_for_superadmin__'] = $__ROLE;
-$_SESSION['role'] = 'employee';
+include 'db_connect.php';
 
-// คืนค่า role อัตโนมัติเมื่อสคริปต์จบ (รวมถึงกรณี exit/redirect)
-register_shutdown_function(function () {
-    if (isset($_SESSION['__role_backup_for_superadmin__'])) {
-        $_SESSION['role'] = $_SESSION['__role_backup_for_superadmin__'];
-        unset($_SESSION['__role_backup_for_superadmin__']);
-    }
-});
-
-// ป้องกัน cache เผื่อเพิ่งเปลี่ยนสิทธิ์แล้วกด back
+// ป้องกัน cache
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
-
 
 // ✅ ตรวจสอบว่ามี id ที่จะใช้แก้ไขไหม
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
@@ -86,7 +68,7 @@ if (isset($_POST['update_promo'])) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>แก้ไขโปรโมชั่น - CY Arena</title>
+<title>แก้ไขโปรโมชั่น - CY Arena (Superadmin)</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -131,6 +113,20 @@ body::before {
     radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
   pointer-events: none;
   z-index: 0;
+}
+
+.superadmin-badge {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 50px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
 }
 
 .container {
@@ -421,12 +417,18 @@ select {
 </head>
 <body>
 
+<div style="text-align: center; margin-bottom: 20px;">
+  <span class="superadmin-badge">
+    👑 คุณกำลังแก้ไขในโหมด Superadmin
+  </span>
+</div>
+
 <div class="container">
   <div class="header">
     <div class="header-content">
       <div class="header-icon">✏️</div>
       <h1>แก้ไขโปรโมชั่น</h1>
-      <div class="subtitle">อัปเดตข้อมูลโปรโมชั่นและส่วนลดสำหรับลูกค้า</div>
+      <div class="subtitle">อัปเดตข้อมูลโปรโมชั่นและส่วนลดสำหรับลูกค้า (Superadmin Only)</div>
     </div>
   </div>
 
