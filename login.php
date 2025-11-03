@@ -1,19 +1,10 @@
 <?php
 session_start();
-
-// >>> ADD: เสริม Security Header (ไม่มีผลกับ PHP logic เดิม)
-@header('X-Frame-Options: DENY');
-@header('X-Content-Type-Options: nosniff');
-@header('Referrer-Policy: no-referrer-when-downgrade');
-
 // ตรวจสอบและรวมไฟล์เชื่อมต่อ
 if (!file_exists('db_connect.php')) {
     die("Fatal Error: ไม่พบไฟล์ db_connect.php กรุณาตรวจสอบการตั้งชื่อไฟล์.");
 }
 include 'db_connect.php'; // ไฟล์นี้ต้องกำหนดตัวแปร $conn
-
-// >>> ADD: บังคับ charset เพื่อกันปัญหา collation/emoji
-if (isset($conn) && !$conn->connect_error) { @$conn->set_charset('utf8mb4'); }
 
 // ===== BOOTSTRAP: สร้าง role + ผู้ใช้แอดมินเริ่มต้น (admin/1234) ถ้ายังไม่มี =====
 if (isset($conn) && !$conn->connect_error) {
@@ -25,7 +16,7 @@ if (isset($conn) && !$conn->connect_error) {
         WHERE NOT EXISTS (SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')
     ");
 
-    // >>> ADD: สร้างตารางสิทธิ์ลูกค้าแบบ admin รายประเภทสนาม (ครั้งเดียว)
+    // >>> ADD: สร้างตารางสิทธิ์ลูกค้าแบบ admin รายประเภทสนาม (ครั้งเดียว) <<<
     @$conn->query("
         CREATE TABLE IF NOT EXISTS Tbl_Type_Admin (
             TypeAdminID INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,22 +27,7 @@ if (isset($conn) && !$conn->connect_error) {
             KEY idx_type_admin_type (VenueTypeID)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     ");
-
-    // >>> ADD: ตารางบันทึกประวัติการล็อกอิน (audit log)
-    @$conn->query("
-        CREATE TABLE IF NOT EXISTS Tbl_Login_Log (
-            LogID INT AUTO_INCREMENT PRIMARY KEY,
-            UserType  VARCHAR(32)  NOT NULL,
-            UserID    INT          NOT NULL,
-            Username  VARCHAR(100) NOT NULL,
-            IP        VARCHAR(64)  NULL,
-            UserAgent VARCHAR(255) NULL,
-            LoggedAt  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            KEY idx_login_user (UserType,UserID),
-            KEY idx_login_time (LoggedAt)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    ");
-    // <<< END ADD
+    // <<< END ADD >>>
 
     // 2) ดึง RoleID
     $rid = null;
@@ -97,11 +73,7 @@ $message = "";
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
     $password_plain = trim($_POST['password']);
-
-    // >>> ADD: เก็บข้อมูลสำหรับ log
-    $client_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-    $user_agent = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
-
+    
     // ตรวจสอบว่ามีการเชื่อมต่อ $conn สำเร็จหรือไม่
     if (!isset($conn) || $conn->connect_error) {
         $message = "❌ ไม่สามารถเชื่อมต่อฐานข้อมูลได้: " . ($conn->connect_error ?? "ตัวแปร \$conn ไม่ถูกกำหนดใน db_connect.php");
@@ -123,24 +95,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($result->num_rows == 1) {
                 $row = $result->fetch_assoc();
                 if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
-
-                    // >>> ADD: อัปเกรดให้เป็น hash ทันที หากยังเป็น plain หรือควร rehash
-                    $need_rehash = false;
-                    $info = password_get_info($row['Password']);
-                    if ($info['algo'] === 0 || password_needs_rehash($row['Password'], PASSWORD_DEFAULT)) {
-                        $need_rehash = true;
-                    }
-                    if ($need_rehash) {
-                        if ($u = $conn->prepare("UPDATE Tbl_Customer SET Password=? WHERE CustomerID=?")) {
-                            $new_hash = password_hash($password_plain, PASSWORD_DEFAULT);
-                            $uid = (int)$row['ID'];
-                            $u->bind_param("si", $new_hash, $uid);
-                            @$u->execute();
-                            $u->close();
-                        }
-                    }
-                    // <<< END ADD
-
                     $_SESSION['user_id'] = $row['ID'];
                     $_SESSION['user_name'] = $row['FirstName'];
                     $_SESSION['avatar_path'] = $row['AvatarPath'] ?? '';
@@ -166,17 +120,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         }
                         $ta->close();
                     }
-                    // <<< END ADD
-
-                    // >>> ADD: ป้องกัน Session Fixation + บันทึกล็อกอิน
-                    @session_regenerate_id(true);
-                    if ($log = $conn->prepare("INSERT INTO Tbl_Login_Log (UserType,UserID,Username,IP,UserAgent) VALUES (?,?,?,?,?)")) {
-                        $ut = $_SESSION['role']; $uid = (int)$_SESSION['user_id'];
-                        $log->bind_param("sisss", $ut, $uid, $username, $client_ip, $user_agent);
-                        @$log->execute();
-                        $log->close();
-                    }
-                    // <<< END ADD
+                    // <<< END ADD >>>
 
                     $stmt->close();
                     $conn->close();
@@ -189,7 +133,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
             $stmt->close();
         }
-
 
         // --- 2. ตรวจสอบพนักงาน (ทำงานเมื่อไม่พบ/รหัสผ่านผิดของลูกค้า และยังไม่มีข้อผิดพลาด Query) ---
         if (!$found && empty($message)) {
@@ -213,40 +156,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if ($result->num_rows == 1) {
                     $row = $result->fetch_assoc();
                     if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
-
-                        // >>> ADD: อัปเกรดรหัสผ่านพนักงานเป็น hash หากยังไม่ใช่
-                        $need_rehash_emp = false;
-                        $info_emp = password_get_info($row['Password']);
-                        if ($info_emp['algo'] === 0 || password_needs_rehash($row['Password'], PASSWORD_DEFAULT)) {
-                            $need_rehash_emp = true;
-                        }
-                        if ($need_rehash_emp) {
-                            if ($u = $conn->prepare("UPDATE Tbl_Employee SET Password=? WHERE EmployeeID=?")) {
-                                $new_hash = password_hash($password_plain, PASSWORD_DEFAULT);
-                                $uid = (int)$row['ID'];
-                                $u->bind_param("si", $new_hash, $uid);
-                                @$u->execute();
-                                $u->close();
-                            }
-                        }
-                        // <<< END ADD
-
                         $_SESSION['user_id'] = $row['ID'];
                         $_SESSION['user_name'] = $row['FirstName'];
-                        // เนื่องจากลบ AvatarPath ออกจาก SELECT จึงต้องมั่นใจว่ามีการกำหนดค่าเริ่มต้น
-                        $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; // จะได้ค่าว่าง (nullish coalescing)
+                        $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; // ไม่มีใน SELECT จะได้ค่าว่าง
                         $_SESSION['role'] = ($row['RoleName'] === 'super_admin') ? 'super_admin' : 'employee';
-
-                        // >>> ADD: ป้องกัน Session Fixation + บันทึกล็อกอิน
-                        @session_regenerate_id(true);
-                        if ($log = $conn->prepare("INSERT INTO Tbl_Login_Log (UserType,UserID,Username,IP,UserAgent) VALUES (?,?,?,?,?)")) {
-                            $ut = $_SESSION['role']; $uid = (int)$_SESSION['user_id'];
-                            $log->bind_param("sisss", $ut, $uid, $username, $client_ip, $user_agent);
-                            @$log->execute();
-                            $log->close();
-                        }
-                        // <<< END ADD
-
                         $stmt->close();
                         $conn->close();
                         header("Location: dashboard.php");
@@ -276,10 +189,198 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <title>เข้าสู่ระบบ | CY Arena</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Kanit:wght@700;800&display=swap" rel="stylesheet">
 <style>
-/* ... (CSS เดิมของคุณทั้งหมด) ... */
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1e40af;
+  --primary-light: #3b82f6;
+  --gray-100: #f5f5f4;
+  --gray-700: #44403c;
+  --gray-900: #1c1917;
+  --danger: #dc2626;
+  --spacing: 1.5rem;
+  --error: #dc2626; 
+}
+
+body {
+  margin: 0;
+  font-family: 'Sarabun', sans-serif;
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: var(--gray-900);
+  padding: 1.5rem; 
+  box-sizing: border-box;
+}
+
+/* ===== CARD ===== */
+.login-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 2.5rem 2rem;
+  max-width: 420px; 
+  min-width: 300px; 
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  animation: fadeIn 0.7s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== LOGO ===== */
+.logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.8rem;
+}
+
+.logo img {
+  width: 220px;
+  max-width: 80%;
+  height: auto;
+  display: block;
+  margin: 0 auto 10px auto;
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.logo img:hover {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 8px rgba(37,99,235,0.3));
+}
+
+/* ===== FORM ===== */
+h2 {
+  text-align: center;
+  font-weight: 800;
+  font-family: 'Kanit', sans-serif;
+  color: var(--gray-900);
+  margin-bottom: 1rem;
+}
+p.desc {
+  text-align: center;
+  color: var(--gray-700);
+  margin-bottom: 2rem;
+}
+.form-group {
+  margin-bottom: 1.25rem;
+}
+label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid var(--gray-100);
+  border-radius: 12px;
+  font-size: 1rem;
+  transition: all 0.3s;
+  box-sizing: border-box; 
+}
+input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
+  outline: none;
+}
+
+/* ===== BUTTON ===== */
+.btn {
+  width: 100%;
+  padding: 1rem;
+  font-weight: 800;
+  font-family: 'Kanit', sans-serif;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 1.125rem;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  color: white;
+  box-shadow: 0 4px 12px rgba(37,99,235,0.4);
+}
+.btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(37,99,235,0.6);
+}
+
+/* ===== MESSAGE & FOOTER ===== */
+.message {
+  margin-top: 1rem;
+  color: var(--error);
+  text-align: center;
+  font-weight: 700;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background-color: rgba(220, 38, 38, 0.08); 
+  border: 1px solid var(--danger);
+}
+.footer-text {
+  text-align: center;
+  margin-top: 1.75rem;
+  color: var(--gray-700);
+  font-weight: 600;
+}
+.footer-text a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 700;
+}
+.footer-text a:hover { text-decoration: underline; }
+
+@media (max-width: 480px) {
+  body { padding: 0; } 
+  .login-card { 
+      width: 100vw; 
+      max-width: none;
+      border-radius: 0; 
+      padding: 2rem 1rem;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+  }
+  .logo img { width: 160px; margin-bottom: 8px; }
+}
 </style>
 </head>
 <body>
-<!-- ... (HTML เดิมของคุณทั้งหมด) ... -->
+
+<div class="login-card">
+  <div class="logo">
+    <img src="images/cy.png" alt="CY Arena Logo">
+  </div>
+
+  <h2>เข้าสู่ระบบ</h2>
+  <p class="desc">กรอกชื่อผู้ใช้และรหัสผ่านของคุณเพื่อเข้าสู่ระบบ</p>
+
+  <form method="POST">
+    <div class="form-group">
+      <label for="username">👤 ชื่อผู้ใช้</label>
+      <input type="text" name="username" id="username" required placeholder="กรอกชื่อผู้ใช้">
+    </div>
+    <div class="form-group">
+      <label for="password">🔒 รหัสผ่าน</label>
+      <input type="password" name="password" id="password" required placeholder="กรอกรหัสผ่าน">
+    </div>
+    <button type="submit" class="btn btn-primary">เข้าสู่ระบบ 🚀</button>
+  </form>
+
+  <?php if ($message): ?>
+    <div class="message"><?= htmlspecialchars($message) ?></div>
+  <?php endif; ?>
+
+  <div class="footer-text">
+    ยังไม่มีบัญชี? <a href="register.php">สมัครสมาชิกฟรี</a>
+  </div>
+</div>
+
 </body>
 </html>
