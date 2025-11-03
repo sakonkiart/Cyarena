@@ -10,6 +10,10 @@ include 'db_connect.php';
 $userName = $_SESSION['user_name'];
 $role     = $_SESSION['role'] ?? 'customer';
 
+/* ===== ADD: role helpers ===== */
+$isSuper = ($role === 'super_admin');
+$isStaff = ($role !== 'customer');
+
 // Avatar
 $avatarPath  = $_SESSION['avatar_path'] ?? '';
 $avatarLocal = 'assets/avatar-default.png';
@@ -90,6 +94,15 @@ if ($role === 'employee') {
     $promoRes = $conn->query($promoSql);
     if ($promoRes) {
         $activePromoCount = $promoRes->fetch_assoc()['count'];
+    }
+}
+
+/* ===== ADD: นับโปรให้ super_admin ด้วย ===== */
+if ($role === 'super_admin' && $activePromoCount == 0) {
+    $promoSql2 = "SELECT COUNT(*) as count FROM Tbl_Promotion WHERE NOW() BETWEEN StartDate AND EndDate";
+    $promoRes2 = $conn->query($promoSql2);
+    if ($promoRes2) {
+        $activePromoCount = $promoRes2->fetch_assoc()['count'];
     }
 }
 
@@ -1121,6 +1134,10 @@ body {
           <?php endif; ?>
         </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
+        <!-- ADD: ปุ่มเฉพาะ super admin -->
+        <?php if ($isSuper): ?>
+          <a href="super_admin_grant.php" class="nav-link">👑 ให้สิทธิ์ผู้ใช้</a>
+        <?php endif; ?>
       <?php endif; ?>
     </nav>
     
@@ -1134,8 +1151,13 @@ body {
           <div class="dropdown-header">
             <div class="dropdown-header-name"><?php echo htmlspecialchars($userName); ?></div>
             <div class="dropdown-header-role"><?php echo $role === 'customer' ? '👤 ลูกค้า' : '👨‍💼 พนักงาน'; ?></div>
+            <?php if ($isSuper): ?><div class="dropdown-header-role">👑 Super Admin</div><?php endif; ?>
           </div>
           <a href="profile_edit.php" class="dropdown-item">✏️ แก้ไขโปรไฟล์</a>
+          <!-- ADD: ทางลัดไปหน้าให้สิทธิ์ -->
+          <?php if ($isSuper): ?>
+            <a href="super_admin_grant.php" class="dropdown-item">👑 ให้สิทธิ์ผู้ใช้</a>
+          <?php endif; ?>
           <a href="logout.php" class="dropdown-item">🚪 ออกจากระบบ</a>
         </div>
       </div>
@@ -1220,6 +1242,14 @@ body {
           <?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "สร้างโปรโมชั่นใหม่"; ?>
         </div>
       </div>
+      <!-- ADD: การ์ดให้สิทธิ์ผู้ใช้ เฉพาะ super admin -->
+      <?php if ($isSuper): ?>
+      <div class="action-card" onclick="window.location.href='super_admin_grant.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg,#a855f7 0%,#8b5cf6 100%);">👑</div>
+        <div class="action-title">ให้สิทธิ์ผู้ใช้</div>
+        <div class="action-desc">อัปเกรด/ลดสิทธิ์พนักงาน</div>
+      </div>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
 </section>
