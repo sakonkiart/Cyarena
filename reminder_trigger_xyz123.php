@@ -52,12 +52,17 @@ function sendConfirmationEmail($conn, $recipientEmail, $recipientName, $startTim
         
         // Sender/Recipient
         $mail->setFrom('no-reply@cyarena.com', 'CY Arena Booking');
-        $mail->addAddress($recipientEmail, $recipientName); // ส่งหาลูกค้าจริง
+        
+        // 🌟 แก้ไขเพื่อทดสอบ: บังคับส่งไปยังอีเมลของคุณโดยตรงชั่วคราว
+        // ให้นำ recipientEmail เดิมมาใช้แทน 'test@example.com' 
+        // หากต้องการบังคับส่งไปหาอีเมลอื่น ให้เปลี่ยน 'valorantwhq2548@gmail.com' เป็นอีเมลทดสอบของคุณ
+        $mail->addAddress('valorantwhq2548@gmail.com', $recipientName); // <--- แก้ไขตรงนี้
+        
         $mail->CharSet = 'UTF-8'; 
         
         // Content
         $mail->isHTML(true);
-        $mail->Subject = '🎉 ยืนยันการจองสนามสำเร็จแล้ว! (#'.$bookingID.')';
+        $mail->Subject = '🎉 [TEST] ยืนยันการจองสนามสำเร็จแล้ว! (#'.$bookingID.')';
         
         $mail->Body    = "
             <h2>สวัสดีคุณ {$recipientName},</h2>
@@ -68,6 +73,7 @@ function sendConfirmationEmail($conn, $recipientEmail, $recipientName, $startTim
                 <li><strong>เวลาสิ้นสุด:</strong> ".date('d/m/Y H:i', strtotime($endTime))." น.</li>
             </ul>
             <p>หากมีข้อสงสัยใด ๆ กรุณาติดต่อเรา ขอบคุณครับ!</p>
+            <p style='color:red;'>-- ข้อความนี้ถูกส่งไปยังอีเมลทดสอบโดยตรง --</p>
         ";
         
         $mail->send();
@@ -126,7 +132,7 @@ $result = $stmt->get_result();
 
 if ($result && $result->num_rows > 0) {
     $booking = $result->fetch_assoc();
-    sendConfirmationEmail(
+    $send_success = sendConfirmationEmail( // เก็บผลลัพธ์การส่ง
         $conn, 
         $booking['Email'], 
         $booking['CustomerName'], 
@@ -134,9 +140,16 @@ if ($result && $result->num_rows > 0) {
         $booking['EndTime'],
         $booking['BookingID']
     );
-    echo "Booking confirmation email sent successfully for ID: {$bookingID}.";
+    
+    // ตรวจสอบผลลัพธ์การส่งและแสดงข้อความที่ชัดเจนขึ้น
+    if ($send_success) {
+        echo "Booking confirmation email sent successfully to valorantwhq2548@gmail.com (TEST MODE) for ID: {$bookingID}.";
+    } else {
+        // ถ้าส่งไม่สำเร็จ แต่ DB ดึงข้อมูลได้ ให้แสดงข้อความแจ้ง Mailer Error
+        echo "Booking confirmation email FAILED to send for ID: {$bookingID}. Check Render Logs for Mailer Error details.";
+    }
 } else {
-    echo "No valid booking found for ID: {$bookingID}.";
+    echo "No valid booking found for ID: {$bookingID} or BookingStatusID is not 2.";
 }
 
 $stmt->close();
