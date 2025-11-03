@@ -1130,7 +1130,6 @@ body {
         </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
       <?php elseif ($isSuper): ?>
-        <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
         <a href="promotion_manage.php" class="nav-link promo-link">
           🎁 จัดการโปรโมชั่น
@@ -1256,17 +1255,17 @@ body {
         <div class="action-title">ปฏิทินการจอง</div>
         <div class="action-desc">ดูตารางการจอง</div>
       </div>
-      <div class="action-card" onclick="window.location.href='admin_venues.php'">
-        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🏟️</div>
-        <div class="action-title">จัดการสนาม</div>
-        <div class="action-desc">เพิ่ม/แก้ไขสนาม</div>
-      </div>
       <div class="action-card" onclick="window.location.href='promotion_manage.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
         <div class="action-title">จัดการโปรโมชั่น</div>
         <div class="action-desc">
           <?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "สร้างโปรโมชั่นใหม่"; ?>
         </div>
+      </div>
+      <div class="action-card" onclick="window.location.href='report.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);">📊</div>
+        <div class="action-title">รายงาน</div>
+        <div class="action-desc">สรุปรายงานระบบ</div>
       </div>
       <div class="action-card" onclick="window.location.href='super_admin_grant.php'">
         <div class="action-icon" style="background: linear-gradient(135deg,#a855f7 0%,#8b5cf6 100%);">👑</div>
