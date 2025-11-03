@@ -1492,5 +1492,34 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 });
 </script>
 
+    <?php
+// >>> ADD-ONLY (dashboard.php): show Promo Manage quick button for super admin only
+if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
+$__ROLE = $_SESSION['role'] ?? '';
+$__IS_SUPER = in_array($__ROLE, ['superadmin', 'super_admin', 'super']);
+?>
+
+<?php if ($__IS_SUPER): ?>
+  <a href="promotion_manage.php" class="fab-superadmin" title="จัดการโปรโมชั่น (เฉพาะ Super Admin)">
+    🎁 จัดการโปรโมชัน
+  </a>
+  <style>
+    .fab-superadmin{
+      position:fixed; right:24px; bottom:24px;
+      background:linear-gradient(135deg,#f59e0b,#d97706);
+      color:#fff; font-weight:700; padding:12px 16px; border-radius:999px;
+      box-shadow:0 10px 25px rgba(0,0,0,.2); text-decoration:none; z-index:9999;
+    }
+    .fab-superadmin:hover{ transform: translateY(-2px); box-shadow:0 14px 32px rgba(0,0,0,.28); }
+  </style>
+<?php else: ?>
+  <!-- ซ่อนลิงก์ไปหน้าโปรโมชั่นสำหรับ non-superadmin แบบไม่ต้องแก้ HTML เดิม -->
+  <style>
+    a[href*="promotion_manage.php"],
+    a[href*="promotion.php"] { display:none !important; }
+  </style>
+<?php endif; ?>
+
+
 </body>
 </html>
