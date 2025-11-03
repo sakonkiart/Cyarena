@@ -37,30 +37,28 @@ function sendReminderEmail($conn, $recipientEmail, $recipientName, $startTime, $
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com'; 
         $mail->SMTPAuth   = true;
-        // 📧 แก้ไข: Gmail Address ของคุณ (ใช้ค่าจริงของคุณ)
+        // 📧 Gmail Address ของคุณ (บัญชีที่ใช้ส่ง)
         $mail->Username   = 'valorantwhq2548@gmail.com'; 
-        // 🔑 แก้ไข: App Password 16 หลัก (ใช้ค่าจริงของคุณ)
-       $mail->Password   = 'rzwx bonp logd gaug'; 
-// 1. เปลี่ยนการเข้ารหัสเป็น SSL/TLS
-// 1. เปลี่ยนการเข้ารหัสเป็น STARTTLS
-$mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // ⬅️ แก้ไขเป็น STARTTLS
-// 2. เปลี่ยนพอร์ตจาก 465 เป็น 587
-$mail->Port       = 587;
+        // 🔑 App Password 16 หลักชุดใหม่ล่าสุด
+        $mail->Password   = 'rzwx bonp logd gaug'; 
+        // การเข้ารหัสและพอร์ต (ใช้ 587 ที่คุณต้องการ)
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; 
+        $mail->Port       = 587;
+        
         // Sender/Recipient
         $mail->setFrom('no-reply@cyarena.com', 'CY Arena Booking');
         
-        // 🚨 การทดสอบ: ส่งไปที่อีเมลทดสอบของคุณ (Valorant...)
-        $testEmail = 'valorantwhq2548@gmail.com'; 
-        $mail->addAddress($testEmail, "Tester");
+        // 🚨 **(ลบโค้ดทดสอบผู้รับทิ้ง)**
+        // $testEmail = 'valorantwhq2548@gmail.com'; 
+        // $mail->addAddress($testEmail, "Tester");
         
-        // ** (ต้องคอมเมนต์บรรทัดนี้ทิ้งไว้) **
-        // $mail->addAddress($recipientEmail, $recipientName); 
+        // 🟢 ผู้รับจริง: ลูกค้าที่จอง
+        $mail->addAddress($recipientEmail, $recipientName); 
         
         $mail->CharSet = 'UTF-8'; 
         
         // Content
         $mail->isHTML(true);
-        // 🛠️ แก้ไข: เพิ่ม Subject และ Body ที่หายไป
         $mail->Subject = '⭐ แจ้งเตือน: การจองสนามจะเริ่มใน 30 นาที! (#'.$bookingID.')';
         $mail->Body    = "
             <h2>สวัสดีคุณ {$recipientName},</h2>
@@ -71,19 +69,15 @@ $mail->Port       = 587;
         
         $mail->send();
         
-        // ⚠️ ข้อควรระวัง: คอมเมนต์ส่วนนี้ทิ้งไปชั่วคราว
-        // เพื่อป้องกันไม่ให้คอลัมน์ NotificationSent ถูกตั้งค่าเป็น 1 ในการทดสอบ
-        /*
+        // 🟢 **(เปิดใช้งาน UPDATE STATUS)**
         // ถ้าส่งสำเร็จ: อัปเดตสถานะในฐานข้อมูล
-        $update_sql = "UPDATE Tbl_Booking SET NotificationSent = 1 WHERE BookingID = ?"; // 🛠️ แก้ไข: ใช้ Tbl_Booking
+        $update_sql = "UPDATE Tbl_Booking SET NotificationSent = 1 WHERE BookingID = ?"; 
         $stmt = $conn->prepare($update_sql);
         $stmt->bind_param("i", $bookingID);
         $stmt->execute();
-        */
-
+        
         return true;
     } catch (Exception $e) {
-        // 🛠️ แก้ไข: รวมส่วนการจัดการ Error ไว้ใน catch เดียว
         error_log("Mailer Error for Booking #{$bookingID}: {$mail->ErrorInfo}");
         return false;
     }
@@ -107,9 +101,9 @@ $sql = "
     WHERE 
         b.BookingStatusID = 2 /* ดึงเฉพาะสถานะยืนยันแล้ว */
         AND b.NotificationSent = 0
-    ORDER BY b.BookingID DESC /* ดึงรายการล่าสุด */
-    LIMIT 1;
+        AND b.StartTime BETWEEN DATE_ADD(NOW(), INTERVAL 25 MINUTE) AND DATE_ADD(NOW(), INTERVAL 35 MINUTE) /* ⬅️ เงื่อนไขเวลาใช้งานจริง */
 ";
+// **ลบ ORDER BY และ LIMIT ที่เคยใช้ในการทดสอบทิ้งไป**
 
 $result = $conn->query($sql);
 
