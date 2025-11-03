@@ -28,7 +28,8 @@ use PHPMailer\PHPMailer\Exception;
 // --------------------------------------------------------
 // Function: sendEmail (รวม Logic การส่งอีเมล)
 // --------------------------------------------------------
-function sendEmail($conn, $recipientEmail, $recipientName, $startTime, $endTime, $bookingID, $pitchName, $isConfirmation = true) {
+// ใช้ $venueName ที่ดึงมาจาก Tbl_Venue
+function sendEmail($conn, $recipientEmail, $recipientName, $startTime, $endTime, $bookingID, $venueName, $isConfirmation = true) {
     $mail = new PHPMailer(true);
     try {
         // --- การตั้งค่า SMTP ---
@@ -51,10 +52,10 @@ function sendEmail($conn, $recipientEmail, $recipientName, $startTime, $endTime,
             $mail->Subject = '🎉 ยืนยันการจองสนามสำเร็จแล้ว! (#'.$bookingID.')';
             $mail->Body    = "
                 <h2>สวัสดีคุณ {$recipientName},</h2>
-                <p>การจองสนามของคุณหมายเลข <strong>#{$bookingID}</strong>
+                <p>การจองของคุณหมายเลข <strong>#{$bookingID}</strong>
                 ได้รับการยืนยันเรียบร้อยแล้ว รายละเอียดการจอง:</p>
                 <ul>
-                    <li><strong>สนามที่จอง:</strong> {$pitchName}</li>
+                    <li><strong>สถานที่/สนามที่จอง:</strong> {$venueName}</li>
                     <li><strong>เวลาเริ่มต้น:</strong> ".date('d/m/Y H:i', strtotime($startTime))." น.</li>
                     <li><strong>เวลาสิ้นสุด:</strong> ".date('d/m/Y H:i', strtotime($endTime))." น.</li>
                 </ul>
@@ -66,10 +67,9 @@ function sendEmail($conn, $recipientEmail, $recipientName, $startTime, $endTime,
             $mail->Subject = '🔔 แจ้งเตือน: อีก 5 นาที สนามของคุณจะเริ่มแล้ว! (#'.$bookingID.')';
             $mail->Body    = "
                 <h2>สวัสดีคุณ {$recipientName},</h2>
-                <p>เราขอแจ้งเตือนว่าการจองสนามของคุณหมายเลข <strong>#{$bookingID}</strong>
-                จะเริ่มต้นในอีกประมาณ <strong>5 นาที</strong> นี้แล้ว</p>
+                <p>เราขอแจ้งเตือนว่าการจองของคุณหมายเลข <strong>#{$bookingID}</strong>
+                ที่ <strong>{$venueName}</strong> จะเริ่มต้นในอีกประมาณ <strong>5 นาที</strong> นี้แล้ว</p>
                 <ul>
-                    <li><strong>สนามที่จอง:</strong> {$pitchName}</li>
                     <li><strong>เวลาเริ่มต้น:</strong> ".date('d/m/Y H:i', strtotime($startTime))." น.</li>
                 </ul>
                 <p>ขอให้สนุกกับการใช้บริการครับ!</p>
@@ -95,21 +95,28 @@ if (isset($_GET['booking_id']) && is_numeric($_GET['booking_id'])) {
     
     $bookingID = (int)$_GET['booking_id'];
     
-    // ดึงข้อมูลการจองที่ได้รับการยืนยันแล้ว (BookingStatusID = 2)
+    // ดึงข้อมูลการจองที่ได้รับการยืนยันแล้ว (BookingStatusID = 2) - ใช้ Tbl_Venue
     $sql = "
         SELECT 
             b.BookingID, c.Email, CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName, 
-            b.StartTime, b.EndTime, p.PitchName
+            b.StartTime, b.EndTime, v.VenueName
         FROM 
             Tbl_Booking b   
         JOIN Tbl_Customer c ON b.CustomerID = c.CustomerID 
-        JOIN Tbl_Pitch p ON b.PitchID = p.PitchID
+        JOIN Tbl_Venue v ON b.VenueID = v.VenueID  -- JOIN ที่ยืนยันตาม Schema
         WHERE 
             b.BookingID = ? AND b.BookingStatusID = 2 
         LIMIT 1;
     ";
 
     $stmt = $conn->prepare($sql);
+    // ตรวจสอบความผิดพลาดในการเตรียมคำสั่ง
+    if ($stmt === false) {
+        error_log("Confirmation SELECT Prepare Error: " . $conn->error);
+        http_response_code(500);
+        die("Internal Server Error: Database prepare failed.");
+    }
+
     $stmt->bind_param("i", $bookingID);
     
     if ($stmt->execute()) {
@@ -125,7 +132,7 @@ if (isset($_GET['booking_id']) && is_numeric($_GET['booking_id'])) {
                 $booking['StartTime'],
                 $booking['EndTime'],
                 $booking['BookingID'],
-                $booking['PitchName'],
+                $booking['VenueName'], // ส่ง VenueName
                 true // isConfirmation = true
             );
             
@@ -154,24 +161,32 @@ else {
     $timeStart = date('Y-m-d H:i:s', strtotime('+5 minutes'));
     $timeEnd = date('Y-m-d H:i:s', strtotime('+6 minutes'));
 
-    // ค้นหาการจองที่ยืนยันแล้ว, ยังไม่ถูกแจ้งเตือน, และเวลาเริ่มอยู่ในช่วง 5-6 นาทีข้างหน้า
+    // ค้นหาการจองที่ยืนยันแล้ว, ยังไม่ถูกแจ้งเตือน, และเวลาเริ่มอยู่ในช่วง 5-6 นาทีข้างหน้า - ใช้ Tbl_Venue
     $sql = "
         SELECT 
             b.BookingID, c.Email, CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName, 
-            b.StartTime, b.EndTime, p.PitchName
+            b.StartTime, b.EndTime, v.VenueName
         FROM 
             Tbl_Booking b   
         JOIN Tbl_Customer c ON b.CustomerID = c.CustomerID 
-        JOIN Tbl_Pitch p ON b.PitchID = p.PitchID
+        JOIN Tbl_Venue v ON b.VenueID = v.VenueID -- JOIN ที่ยืนยันตาม Schema
         WHERE 
             b.BookingStatusID = 2 
             AND b.NotificationSent = 0
             AND b.StartTime >= ? 
             AND b.StartTime < ? 
-        LIMIT 100; -- จำกัดจำนวนเพื่อป้องกัน Load
+        LIMIT 100; // จำกัดจำนวนเพื่อป้องกัน Load
     ";
     
     $stmt = $conn->prepare($sql);
+
+    // ตรวจสอบความผิดพลาดในการเตรียมคำสั่ง
+    if ($stmt === false) {
+        error_log("Reminder SELECT Prepare Error: " . $conn->error);
+        http_response_code(500);
+        die("Internal Server Error: Database prepare failed.");
+    }
+
     $stmt->bind_param("ss", $timeStart, $timeEnd);
     
     if ($stmt->execute()) {
@@ -188,7 +203,7 @@ else {
                 $booking['StartTime'],
                 $booking['EndTime'],
                 $booking['BookingID'],
-                $booking['PitchName'],
+                $booking['VenueName'], // ส่ง VenueName
                 false // isConfirmation = false
             );
 
