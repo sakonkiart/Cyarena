@@ -14,15 +14,10 @@ include 'db_connect.php';
 
 $message = "";
 
-/* -----------------------------------------------------------
-   BOOTSTRAP / MIGRATION (รันครั้งเดียวแล้วผ่าน)
-   - สร้าง Tbl_Company
-   - สร้าง Tbl_Company_Admin
-   - เพิ่มคอลัมน์ CompanyID ให้ Tbl_Venue (ถ้ายังไม่มี) + ใส่ FK
-   ----------------------------------------------------------- */
-mysqli_report(MYSQLI_REPORT_OFF); // กัน error โยน exception ระหว่างเช็ค/สร้าง schema
+/* ---------------- BOOTSTRAP / MIGRATION ---------------- */
+mysqli_report(MYSQLI_REPORT_OFF);
 
-// 1) Company table
+// 1) Company
 $conn->query("
 CREATE TABLE IF NOT EXISTS Tbl_Company (
   CompanyID   INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
@@ -32,7 +27,7 @@ CREATE TABLE IF NOT EXISTS Tbl_Company (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 ");
 
-// 2) Company-Admin mapping
+// 2) Company-Admin
 $conn->query("
 CREATE TABLE IF NOT EXISTS Tbl_Company_Admin (
   CompanyAdminID INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
@@ -47,7 +42,7 @@ CREATE TABLE IF NOT EXISTS Tbl_Company_Admin (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 ");
 
-// 3) Ensure Tbl_Venue.CompanyID exists + FK
+// 3) Tbl_Venue.CompanyID
 $hasCompanyCol = false;
 if ($rs = $conn->query("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='Tbl_Venue' AND COLUMN_NAME='CompanyID'")) {
@@ -57,8 +52,7 @@ if ($rs = $conn->query("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
 if (!$hasCompanyCol) {
   $conn->query("ALTER TABLE Tbl_Venue ADD COLUMN CompanyID INT NULL AFTER VenueID;");
 }
-$conn->query("ALTER TABLE Tbl_Venue ADD INDEX idx_venue_company (CompanyID);");
-// เพิ่ม FK ถ้ายังไม่มี
+$conn->query("ALTER TABLE Tbl_Venue ADD INDEX idx_venue_company (CompanyID)");
 $hasFk = false;
 if ($rs = $conn->query("SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='Tbl_Venue' AND REFERENCED_TABLE_NAME='Tbl_Company'")) {
@@ -66,14 +60,13 @@ if ($rs = $conn->query("SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUM
   $rs->close();
 }
 if (!$hasFk) {
-  // ลบ constraint เดิมชื่อไม่แน่นอนก่อน (ถ้ามี)
   @$conn->query("ALTER TABLE Tbl_Venue DROP FOREIGN KEY fk_venue_company");
   @$conn->query("ALTER TABLE Tbl_Venue ADD CONSTRAINT fk_venue_company
                  FOREIGN KEY (CompanyID) REFERENCES Tbl_Company(CompanyID)
                  ON UPDATE CASCADE ON DELETE RESTRICT");
 }
 
-// 4) Seed default company (ถ้ายังไม่มี)
+// 4) seed default company (ครั้งแรก)
 $defaultCompanyId = null;
 if ($r = $conn->query("SELECT CompanyID FROM Tbl_Company ORDER BY CompanyID LIMIT 1")) {
   if ($row = $r->fetch_assoc()) $defaultCompanyId = (int)$row['CompanyID'];
@@ -83,11 +76,9 @@ if (!$defaultCompanyId) {
   $conn->query("INSERT INTO Tbl_Company (CompanyName) VALUES ('Default Company')");
   $defaultCompanyId = (int)$conn->insert_id;
 }
-
-// 5) ใส่ค่า CompanyID ให้สนามที่ยังเป็น NULL ทั้งหมด -> default company (ครั้งเดียว)
 $conn->query("UPDATE Tbl_Venue SET CompanyID = {$defaultCompanyId} WHERE CompanyID IS NULL");
 
-/* ===== role พื้นฐานของพนักงาน (กันลืม) ===== */
+/* ----- roles (กันลืม) ----- */
 @$conn->query("INSERT INTO Tbl_Role (RoleName)
                SELECT 'employee' FROM DUAL
                WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='employee')");
@@ -95,14 +86,53 @@ $conn->query("UPDATE Tbl_Venue SET CompanyID = {$defaultCompanyId} WHERE Company
                SELECT 'super_admin' FROM DUAL
                WHERE NOT EXISTS(SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')");
 
-/* แผนที่ role */
 $roles = [];
 if ($rs = $conn->query("SELECT RoleID, RoleName FROM Tbl_Role ORDER BY RoleName")) {
   while ($r = $rs->fetch_assoc()) $roles[$r['RoleName']] = (int)$r['RoleID'];
   $rs->close();
 }
 
-/* ===== จัดการสิทธิ์พนักงาน (คงเดิม) ===== */
+/* ---------------- HELPERS ---------------- */
+function h($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+
+/** คืน CompanyID ถ้ามีอยู่ / สร้างใหม่ถ้าไม่เจอ (จากชื่อบริษัท) */
+function get_or_create_company_id(mysqli $conn, string $name): ?int {
+  $name = trim($name);
+  if ($name === '') return null;
+
+  if ($stmt = $conn->prepare("SELECT CompanyID FROM Tbl_Company WHERE CompanyName=? LIMIT 1")) {
+    $stmt->bind_param("s", $name);
+    $stmt->execute();
+    $rs = $stmt->get_result();
+    if ($row = $rs->fetch_assoc()) { $stmt->close(); return (int)$row['CompanyID']; }
+    $stmt->close();
+  }
+  if ($stmt = $conn->prepare("
+      INSERT INTO Tbl_Company(CompanyName)
+      VALUES (?)
+      ON DUPLICATE KEY UPDATE CompanyName = VALUES(CompanyName)
+  ")) {
+    $stmt->bind_param("s", $name);
+    if ($stmt->execute()) {
+      $newId = (int)$conn->insert_id;
+      $stmt->close();
+      if ($newId) return $newId;
+      if ($stmt2 = $conn->prepare("SELECT CompanyID FROM Tbl_Company WHERE CompanyName=? LIMIT 1")) {
+        $stmt2->bind_param("s", $name);
+        $stmt2->execute();
+        $rs2 = $stmt2->get_result();
+        $id = ($row2 = $rs2->fetch_assoc()) ? (int)$row2['CompanyID'] : null;
+        $stmt2->close();
+        return $id;
+      }
+    } else { $stmt->close(); }
+  }
+  return null;
+}
+
+/* ---------------- ACTIONS ---------------- */
+
+/* เปลี่ยนสิทธิ์พนักงาน (คงเดิม) */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['employee_id'], $_POST['role_name'])) {
   $empId    = (int)$_POST['employee_id'];
   $roleName = trim($_POST['role_name']);
@@ -116,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['employee_id'], $_POST
       if ($stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID=? WHERE EmployeeID=?")) {
         $stmt->bind_param("ii", $rid, $empId);
         if ($stmt->execute()) { $message = "✅ อัปเดตสิทธิ์พนักงานสำเร็จ"; }
-        else { $message = "❌ อัปเดตไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+        else { $message = "❌ อัปเดตไม่สำเร็จ: ".h($conn->error); }
         $stmt->close();
       } else {
         $message = "❌ เตรียมคำสั่งไม่สำเร็จ (พนักงาน)";
@@ -125,34 +155,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['employee_id'], $_POST
   }
 }
 
-/* ===== แต่งตั้ง/ถอน ลูกค้าเป็น admin/employee ราย "บริษัท" ===== */
+/* เพิ่มบริษัทใหม่แบบกดปุ่มเฉพาะ (ฟอร์มด้านบน) */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_company'])) {
+  $newName = trim($_POST['new_company_name'] ?? '');
+  if ($newName === '') {
+    $message = "❌ กรุณากรอกชื่อบริษัท";
+  } else {
+    $cid = get_or_create_company_id($conn, $newName);
+    if ($cid) $message = "✅ เพิ่ม/ใช้บริษัทเรียบร้อย: ".h($newName)." (ID: ".$cid.")";
+    else     $message = "❌ ไม่สามารถเพิ่มบริษัทได้";
+  }
+}
+
+/* แต่งตั้ง/ถอน ลูกค้าเป็น admin รายบริษัท (ไม่มี employee แล้ว) */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_admin_action'])) {
   $action = $_POST['company_admin_action'];
-  $cid    = (int)($_POST['customer_id'] ?? 0);
+  $customerId = (int)($_POST['customer_id'] ?? 0);
 
   if ($action === 'assign') {
-    $companyId   = (int)($_POST['company_id'] ?? 0);
-    $companyRole = ($_POST['company_role'] ?? 'admin') === 'employee' ? 'employee' : 'admin';
-    if ($companyId <= 0) {
-      $message = "❌ กรุณาเลือกบริษัท";
+    $typedName = trim($_POST['company_name_typed'] ?? '');
+    $companyId = get_or_create_company_id($conn, $typedName); // ต้องพิมพ์ชื่อ
+    $companyRole = 'admin'; // บังคับเป็น admin เท่านั้น
+
+    if (!$companyId) {
+      $message = "❌ กรุณาพิมพ์ชื่อบริษัท";
     } else {
       $sql = "INSERT INTO Tbl_Company_Admin (CompanyID, CustomerID, Role)
               VALUES (?, ?, ?)
               ON DUPLICATE KEY UPDATE CompanyID=VALUES(CompanyID), Role=VALUES(Role)";
       if ($stmt = $conn->prepare($sql)) {
-        $stmt->bind_param("iis", $companyId, $cid, $companyRole);
+        $stmt->bind_param("iis", $companyId, $customerId, $companyRole);
         if ($stmt->execute()) { $message = "✅ แต่งตั้ง/ปรับสิทธิ์บริษัทสำเร็จ"; }
-        else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+        else { $message = "❌ ไม่สำเร็จ: ".h($conn->error); }
         $stmt->close();
       } else {
         $message = "❌ เตรียมคำสั่งไม่สำเร็จ (แต่งตั้งบริษัท)";
       }
     }
-  } elseif ($action === 'revoke') {
+  }
+  elseif ($action === 'revoke') {
     if ($stmt = $conn->prepare("DELETE FROM Tbl_Company_Admin WHERE CustomerID=?")) {
-      $stmt->bind_param("i", $cid);
+      $stmt->bind_param("i", $customerId);
       if ($stmt->execute()) { $message = "✅ ยกเลิกสิทธิ์สำเร็จ"; }
-      else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+      else { $message = "❌ ไม่สำเร็จ: ".h($conn->error); }
       $stmt->close();
     } else {
       $message = "❌ เตรียมคำสั่งไม่สำเร็จ (ยกเลิกสิทธิ์)";
@@ -160,14 +205,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_admin_action'
   }
 }
 
-/* รายชื่อบริษัท (ให้ super_admin เลือกตอนแต่งตั้ง) */
+/* รายชื่อบริษัทเพื่อโชว์ (ยังคงดึงไว้แสดงปัจจุบัน) */
 $companies = [];
 if ($co = $conn->query("SELECT CompanyID, CompanyName FROM Tbl_Company ORDER BY CompanyName")) {
   while ($r = $co->fetch_assoc()) $companies[] = $r;
   $co->close();
 }
 
-/* ===== ดึงผู้ใช้ทั้งหมด (พนักงาน + ลูกค้า + สิทธิ์บริษัท ถ้ามี) ===== */
+/* รวมผู้ใช้ทั้งหมด */
 $users = [];
 
 /* พนักงาน */
@@ -180,7 +225,7 @@ $sqlEmp = "
 ";
 if ($res = $conn->query($sqlEmp)) { $users = array_merge($users, $res->fetch_all(MYSQLI_ASSOC)); $res->close(); }
 
-/* ลูกค้า + สิทธิ์บริษัท (ถ้ามี) */
+/* ลูกค้า + สิทธิ์บริษัท */
 $sqlCus = "
   SELECT c.CustomerID AS id, c.FirstName, c.Username,
          ca.Role AS CompanyRole, co.CompanyName,
@@ -191,15 +236,13 @@ $sqlCus = "
 ";
 if ($res = $conn->query($sqlCus)) { $users = array_merge($users, $res->fetch_all(MYSQLI_ASSOC)); $res->close(); }
 
-/* เรียง: employee ก่อน, แล้ว customer; ต่อด้วย username */
+/* เรียง */
 usort($users, function($a,$b){
   $rank = ['employee'=>0,'customer'=>1];
   $ka = $rank[$a['kind']] ?? 9; $kb = $rank[$b['kind']] ?? 9;
   if ($ka !== $kb) return $ka <=> $kb;
   return strcmp((string)$a['Username'], (string)$b['Username']);
 });
-
-function h($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -211,7 +254,7 @@ function h($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 <style>
 body{font-family:'Sarabun',sans-serif;background:#f6f7fb;margin:0;padding:24px;color:#0f172a}
 h1{margin:0 0 10px} .sub{color:#64748b;margin:0 0 16px}
-.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.05);padding:16px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.05);padding:16px;margin-bottom:16px}
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;vertical-align:top}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.85rem;font-weight:700}
@@ -227,19 +270,30 @@ h1{margin:0 0 10px} .sub{color:#64748b;margin:0 0 16px}
 .btn.sa{background:#1d4ed8;color:#fff}
 .btn.emp{background:#10b981;color:#fff}
 .btn.warn{background:#ef4444;color:#fff}
-.select{padding:6px 8px;border:1px solid #e5e7eb;border-radius:8px}
+.select,.inline-input{padding:6px 8px;border:1px solid #e5e7eb;border-radius:8px}
 .msg{margin:12px 0 16px;padding:10px 12px;border-radius:10px;border:1px solid #e5e7eb;background:#f8fafc}
 .search{margin:10px 0 16px} .search input{width:260px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px}
 .small{color:#64748b}
 </style>
 </head>
 <body>
-  <h1>มอบสิทธิ์ผู้ดูแลระบบ &nbsp;|&nbsp; ตั้งลูกค้าเป็น admin/employee รายบริษัท</h1>
-  <p class="sub">พนักงานใช้ปุ่มด้านขวาเพื่อสลับสิทธิ์ ส่วนลูกค้าเลือก “บริษัท” + “บทบาท (admin/employee)” เพื่อแต่งตั้ง/เปลี่ยนสิทธิ์</p>
+  <h1>มอบสิทธิ์ผู้ดูแลระบบ &nbsp;|&nbsp; ตั้งลูกค้าเป็น <u>admin</u> รายบริษัท</h1>
+  <p class="sub">พนักงานใช้ปุ่มด้านขวาเพื่อสลับสิทธิ์ ส่วนลูกค้าพิมพ์ “ชื่อบริษัท” แล้วบันทึก ระบบจะสร้าง/ใช้บริษัทให้อัตโนมัติ</p>
 
   <?php if ($message): ?>
     <div class="msg"><?= h($message) ?></div>
   <?php endif; ?>
+
+  <!-- กล่องเพิ่มบริษัทใหม่ (ทางเลือก) -->
+  <div class="card">
+    <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="hidden" name="create_company" value="1">
+      <strong>เพิ่มบริษัทใหม่ (ตัวเลือกเสริม):</strong>
+      <input type="text" name="new_company_name" class="inline-input" placeholder="พิมพ์ชื่อบริษัท...">
+      <button class="btn emp" type="submit">เพิ่มบริษัท</button>
+      <span class="small">* ถ้าไม่เพิ่มจากตรงนี้ ก็พิมพ์ชื่อบริษัทในแถวลูกค้าได้เลย</span>
+    </form>
+  </div>
 
   <div class="card">
     <div class="search">🔎 ค้นหา: <input type="text" id="q" placeholder="พิมพ์ชื่อหรือ username"></div>
@@ -296,24 +350,20 @@ h1{margin:0 0 10px} .sub{color:#64748b;margin:0 0 16px}
                 <input type="hidden" name="role_name" value="employee">
                 <button class="btn emp" type="submit">ตั้งเป็น employee</button>
               </form>
-            <?php else: /* customer: แต่งตั้ง admin/employee รายบริษัท */ ?>
+            <?php else: /* customer: แต่งตั้ง admin รายบริษัท ด้วยการ "พิมพ์ชื่อบริษัท" เท่านั้น */ ?>
               <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <input type="hidden" name="company_admin_action" value="assign">
                 <input type="hidden" name="customer_id" value="<?= (int)$u['id'] ?>">
-                <select name="company_id" class="select" required>
-                  <option value="">— เลือกบริษัท —</option>
-                  <?php foreach ($companies as $c): ?>
-                    <option value="<?= (int)$c['CompanyID'] ?>">
-                      <?= h($c['CompanyName']) ?>
-                    </option>
-                  <?php endforeach; ?>
-                </select>
-                <select name="company_role" class="select">
-                  <option value="admin" <?= (!empty($u['CompanyRole']) && $u['CompanyRole']==='admin')?'selected':''; ?>>admin</option>
-                  <option value="employee" <?= (!empty($u['CompanyRole']) && $u['CompanyRole']==='employee')?'selected':''; ?>>employee</option>
-                </select>
-                <button class="btn emp" type="submit">บันทึกสิทธิ์บริษัท</button>
+
+                <!-- พิมพ์ชื่อบริษัท (บังคับ) -->
+                <input type="text" name="company_name_typed" class="inline-input" placeholder="พิมพ์ชื่อบริษัท..." required>
+
+                <!-- บทบาทบังคับเป็น admin -->
+                <input type="hidden" name="company_role" value="admin">
+
+                <button class="btn emp" type="submit">บันทึกสิทธิ์ (admin)</button>
               </form>
+
               <?php if (!empty($u['CompanyRole'])): ?>
                 <form method="post" style="display:inline">
                   <input type="hidden" name="company_admin_action" value="revoke">
@@ -321,7 +371,8 @@ h1{margin:0 0 10px} .sub{color:#64748b;margin:0 0 16px}
                   <button class="btn warn" type="submit">ยกเลิกสิทธิ์</button>
                 </form>
               <?php endif; ?>
-              <div class="small">* ลูกค้าหนึ่งคนมีได้ 1 บริษัท (ค่าเริ่มต้น) หากต้องการหลายบริษัท ให้ปรับ UNIQUE ที่ตาราง Tbl_Company_Admin</div>
+
+              <div class="small">* ระบบจะสร้างบริษัทใหม่ให้อัตโนมัติหากยังไม่มีชื่อที่พิมพ์ไว้</div>
             <?php endif; ?>
           </td>
         </tr>
