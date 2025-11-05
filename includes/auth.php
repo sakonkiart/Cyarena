@@ -1,35 +1,27 @@
 <?php
 // includes/auth.php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+function is_super_admin(): bool {
+  return isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin';
 }
-
-/* ฟังก์ชันตรวจว่ามีการเข้าสู่ระบบ */
-function require_login() {
-    if (!isset($_SESSION['user_id'])) {
-        header("Location: login.php");
-        exit;
-    }
+function is_admin(): bool {
+  return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 }
-
-/* ฟังก์ชันตรวจว่าต้องเป็น super_admin */
-function require_super_admin() {
-    if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'super_admin') {
-        http_response_code(403);
-        echo "403 Forbidden – ต้องเป็น super_admin";
-        exit;
-    }
+function current_employee_id(): int {
+  return (int)($_SESSION['employee_id'] ?? 0);
 }
-
-/* >>> ADD: ฟังก์ชันบังคับ scope บริษัทสำหรับ admin/employee <<< */
-function require_company_scope() {
-    if (!isset($_SESSION['role'])) return; // เงียบไว้ถ้าไม่ทราบ role (ปล่อยหน้า public)
-    if ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'employee') {
-        if (empty($_SESSION['company_id'])) {
-            http_response_code(403);
-            echo "403 Forbidden – ยังไม่ได้กำหนดบริษัทให้ผู้ใช้งานนี้";
-            exit;
-        }
-    }
+function has_admin_access_to_venue(mysqli $conn, int $employeeId, int $venueId): bool {
+  $sql = "
+    SELECT 1
+    FROM Tbl_Admin_Allowed_Venue av
+    JOIN Tbl_Admin_Assignment aa ON aa.EmployeeID = av.EmployeeID
+    JOIN Tbl_Venue v ON v.VenueID = av.VenueID
+    WHERE av.EmployeeID = ? AND av.VenueID = ? AND v.VenueTypeID = aa.VenueTypeID
+    LIMIT 1
+  ";
+  $stmt = $conn->prepare($sql);
+  $stmt->bind_param('ii', $employeeId, $venueId);
+  $stmt->execute();
+  $ok = ($stmt->get_result()->num_rows > 0);
+  $stmt->close();
+  return $ok;
 }
-/* >>> END ADD <<< */
