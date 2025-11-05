@@ -68,7 +68,6 @@ try {
 /** ดึง CompanyID ของ admin รายบริษัท (ผูกใน Tbl_Company_Admin.CustomerID) */
 function getCompanyIdForCurrentAdmin(mysqli $conn, int $userId, string $role): ?int {
     if ($role === 'super_admin') return null; // เห็นทุกบริษัท
-    // ในระบบนี้สิทธิ์ admin รายบริษัทผูกที่ตาราง Tbl_Company_Admin โดย CustomerID หมายถึง user_id ของลูกค้า
     $sql = "SELECT ca.CompanyID
             FROM Tbl_Company_Admin ca
             WHERE ca.CustomerID = ?
@@ -136,10 +135,11 @@ if ($search !== '') {
                                 WHERE v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?
                                 ORDER BY v.VenueID DESC");
         $stmt->bind_param("sss", $like, $like, $like);
+        $stmt->execute();
+        $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
     } else {
-        if (!$MY_COMPANY_ID) {
-            $venues = []; // ยังไม่ได้สิทธิ์บริษัท
-        } else {
+        if ($MY_COMPANY_ID) {
             $stmt = $conn->prepare("SELECT v.*, t.TypeName
                                     FROM Tbl_Venue v
                                     JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
@@ -150,12 +150,9 @@ if ($search !== '') {
             $stmt->execute();
             $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
+        } else {
+            $venues = [];
         }
-    }
-    if ($IS_SUPER) {
-        $stmt->execute();
-        $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
     }
 } else {
     if ($IS_SUPER) {
@@ -179,7 +176,7 @@ if ($search !== '') {
             $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
         } else {
-            $venues = []; // ยังไม่ได้สิทธิ์บริษัท
+            $venues = [];
         }
     }
 }
