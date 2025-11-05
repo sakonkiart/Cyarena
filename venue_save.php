@@ -240,16 +240,17 @@ if (!$IS_SUPER) {
 $ImageURLFinal = $ImageURLNew; // สำหรับ insert ถ้าไม่อัปโหลดก็ปล่อย null/ว่างได้
 
 if ($IS_SUPER) {
-    // super_admin สามารถสร้างสนามให้บริษัทใดก็ได้ (ถ้าต้องการ ใส่ CompanyID ผ่าน POST; ถ้าไม่ใส่ จะเป็น NULL)
-    $INSERT_COMPANY_ID = ($POST_COMPANY_ID > 0 ? $POST_COMPANY_ID : null);
+    // super_admin สามารถสร้างสนามให้บริษัทใดก็ได้ (CompanyID รับจาก POST; ถ้าไม่ส่งจะเป็น NULL)
+    $INSERT_COMPANY_ID = ($POST_COMPANY_ID > 0) ? (int)$POST_COMPANY_ID : null;
 
     $sql = "INSERT INTO Tbl_Venue
             (VenueName, VenueTypeID, Description, PricePerHour, TimeOpen, TimeClose, Address, Status, ImageURL,
              CreatedByUserID, CreatedByRole, CompanyID)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
     if ($stmt = $conn->prepare($sql)) {
+        /* types: s i s d s s s s s i s i  => "sisdsssssisi" */
         $stmt->bind_param(
-            "sisdsssssis" . ($INSERT_COMPANY_ID === null ? "s" : "i"),
+            "sisdsssssisi",
             $VenueName,
             $VenueTypeID,
             $Description,
@@ -283,6 +284,7 @@ if ($IS_SUPER) {
              CreatedByUserID, CreatedByRole, CompanyID)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
     if ($stmt = $conn->prepare($sql)) {
+        /* types: s i s d s s s s s i s i */
         $stmt->bind_param(
             "sisdsssssisi",
             $VenueName,
