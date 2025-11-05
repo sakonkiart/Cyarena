@@ -14,8 +14,22 @@ $role     = $_SESSION['role'] ?? 'customer';
 $isSuper    = ($role === 'super_admin');
 $isAdmin    = in_array($role, ['admin','type_admin'], true);   // admin รวม type_admin
 $isEmployee = ($role === 'employee');
-/* ✅ เปลี่ยนให้ซ่อนลิสต์สนามเฉพาะ employee เท่านั้น */
+/* ✅ ซ่อนลิสต์สนามเฉพาะ employee เท่านั้น */
 $isStaffUIHide = $isEmployee;
+
+/* ===== Company helper (NEW – ใช้เฉพาะ admin/type_admin) =====
+   ผูกสิทธิ์บริษัทจาก Tbl_Company_Admin.CustomerID = user_id ของแอดมินรายบริษัท */
+function getCompanyIdForCurrentAdmin(mysqli $conn, int $userId, string $role): ?int {
+    if ($role === 'super_admin') return null;
+    $sql = "SELECT CompanyID FROM Tbl_Company_Admin WHERE CustomerID = ? LIMIT 1";
+    if ($st = $conn->prepare($sql)) {
+        $st->bind_param("i", $userId);
+        $st->execute();
+        $rs = $st->get_result();
+        if ($row = $rs->fetch_assoc()) return (int)$row['CompanyID'];
+    }
+    return null;
+}
 
 /* Avatar */
 $avatarPath  = $_SESSION['avatar_path'] ?? '';
@@ -34,13 +48,25 @@ if ($avatarPath && _exists_rel($avatarPath)) {
 
 /* ===== ดึงรายการสนาม =====
    - customer/super_admin: เห็นทั้งหมด (เดิม)
-   - admin/type_admin: เห็นเฉพาะที่ตัวเองสร้าง (WHERE CreatedByUserID = uid)
+   - admin/type_admin: เห็น “ทุกสนามในบริษัทเดียวกัน” (เปลี่ยนจากเดิมที่เห็นเฉพาะที่ตัวเองสร้าง)
    - employee: ไม่ดึง (เพราะซ่อนทั้งส่วนลิสต์) */
 $venues = [];
-if (!$isStaffUIHide) {
-  $uid = (int)($_SESSION['user_id'] ?? 0);
-  $ownerFilter = $isAdmin ? "WHERE v.CreatedByUserID = {$uid}" : "";  // ✅ filter เฉพาะ admin/type_admin
+$uid = (int)($_SESSION['user_id'] ?? 0);
+$companyFilterSql = '';
+$companyIdForAdmin = null;
 
+if ($isAdmin) {
+    $companyIdForAdmin = getCompanyIdForCurrentAdmin($conn, $uid, $role);
+    // ถ้ายังไม่ได้รับสิทธิ์บริษัท จะไม่แสดงรายการ (ให้เป็นลิสต์ว่าง)
+    if ($companyIdForAdmin) {
+        $companyIdForAdmin = (int)$companyIdForAdmin;
+        $companyFilterSql = "WHERE v.CompanyID = {$companyIdForAdmin}";
+    } else {
+        $companyFilterSql = "WHERE 1=0"; // บังคับให้ว่าง
+    }
+}
+
+if (!$isStaffUIHide) {
   $sql = "
   SELECT 
       v.*,
@@ -69,7 +95,7 @@ if (!$isStaffUIHide) {
   FROM Tbl_Venue v
   JOIN Tbl_Venue_Type vt ON v.VenueTypeID = vt.VenueTypeID
   LEFT JOIN Tbl_Review r ON v.VenueID = r.VenueID
-  {$ownerFilter}
+  " . ($isSuper || $role === 'customer' ? "" : $companyFilterSql) . "
   GROUP BY v.VenueID
   ORDER BY v.VenueName;
   ";
@@ -78,7 +104,7 @@ if (!$isStaffUIHide) {
   }
 }
 
-/* --- compute readyCount --- */
+/* --- compute readyCount (แก้ให้คิดตามสโคปบริษัทของ admin/type_admin) --- */
 @$conn->query("SET time_zone = '+07:00'");
 $readyCount = 0;
 $readySql = "
@@ -94,6 +120,9 @@ $readySql = "
         AND b.EndTime > NOW()
     )
 ";
+if ($isAdmin && $companyIdForAdmin) {
+    $readySql .= " AND v.CompanyID = {$companyIdForAdmin}";
+}
 if ($__rc = $conn->query($readySql)) {
     $readyCount = (int) ((($__rc->fetch_assoc())['c'] ?? 0));
 }
@@ -118,6 +147,7 @@ $conn->close();
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 <?php echo preg_replace('/^/m','',<<<'CSS'
+/* ====== สไตล์ทั้งหมดคงเดิม ====== */
 :root{--primary:#2563eb;--primary-dark:#1e40af;--primary-light:#3b82f6;--secondary:#eab308;--accent:#f97316;--danger:#dc2626;--dark:#1c1917;--white:#ffffff;--gray-50:#fafaf9;--gray-100:#f5f5f4;--gray-200:#e7e5e4;--gray-700:#44403c;--gray-900:#1c1917;--turf-green:#16a34a;--court-orange:#f97316;--field-blue:#0ea5e9}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:var(--gray-900);line-height:1.6}
@@ -385,7 +415,7 @@ CSS
       <div class="action-card" onclick="window.location.href='admin_venues.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);">🏟️</div>
         <div class="action-title">จัดการสนามของฉัน</div>
-        <div class="action-desc">สร้าง/แก้ไข สนามที่คุณสร้าง</div>
+        <div class="action-desc">สร้าง/แก้ไข สนามที่บริษัทของฉัน</div>
       </div>
 
     <?php elseif ($isSuper): ?>
@@ -436,7 +466,7 @@ CSS
   </section>
 
 <?php else: ?>
-  <!-- FILTERS (ลูกค้า/ซูเปอร์แอดมิน และ admin/type_admin ที่ถูกกรองตามเจ้าของ) -->
+  <!-- FILTERS (ลูกค้า/ซูเปอร์แอดมิน และ admin/type_admin ที่ถูกกรองตามบริษัท) -->
   <section class="filters-section" id="venues">
     <div class="section-header">
       <h2 class="section-title">เลือกประเภทสนาม</h2>
@@ -458,7 +488,7 @@ CSS
     </div>
   </section>
 
-  <!-- VENUES (ลูกค้า/ซูเปอร์แอดมิน เห็นทั้งหมด; admin/type_admin เห็นเฉพาะของตัวเอง) -->
+  <!-- VENUES -->
   <section class="venues-section">
     <div class="section-header"><h2 class="section-title">สนามแนะนำ</h2></div>
     <div class="venue-grid" id="venueGrid">
