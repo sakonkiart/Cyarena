@@ -14,6 +14,79 @@ include 'db_connect.php';
 
 $message = "";
 
+/* -----------------------------------------------------------
+   BOOTSTRAP / MIGRATION (รันครั้งเดียวแล้วผ่าน)
+   - สร้าง Tbl_Company
+   - สร้าง Tbl_Company_Admin
+   - เพิ่มคอลัมน์ CompanyID ให้ Tbl_Venue (ถ้ายังไม่มี) + ใส่ FK
+   ----------------------------------------------------------- */
+mysqli_report(MYSQLI_REPORT_OFF); // กัน error โยน exception ระหว่างเช็ค/สร้าง schema
+
+// 1) Company table
+$conn->query("
+CREATE TABLE IF NOT EXISTS Tbl_Company (
+  CompanyID   INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  CompanyName VARCHAR(255) NOT NULL,
+  CreatedAt   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_company_name (CompanyName)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+");
+
+// 2) Company-Admin mapping
+$conn->query("
+CREATE TABLE IF NOT EXISTS Tbl_Company_Admin (
+  CompanyAdminID INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  CompanyID      INT NOT NULL,
+  CustomerID     INT NOT NULL,
+  Role           ENUM('admin','employee') NOT NULL DEFAULT 'admin',
+  CreatedAt      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_company_customer (CustomerID),
+  KEY idx_company (CompanyID),
+  CONSTRAINT fk_ca_company  FOREIGN KEY (CompanyID)  REFERENCES Tbl_Company(CompanyID) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT fk_ca_customer FOREIGN KEY (CustomerID) REFERENCES Tbl_Customer(CustomerID) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+");
+
+// 3) Ensure Tbl_Venue.CompanyID exists + FK
+$hasCompanyCol = false;
+if ($rs = $conn->query("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='Tbl_Venue' AND COLUMN_NAME='CompanyID'")) {
+  $hasCompanyCol = ($rs->num_rows > 0);
+  $rs->close();
+}
+if (!$hasCompanyCol) {
+  $conn->query("ALTER TABLE Tbl_Venue ADD COLUMN CompanyID INT NULL AFTER VenueID;");
+}
+$conn->query("ALTER TABLE Tbl_Venue ADD INDEX idx_venue_company (CompanyID);");
+// เพิ่ม FK ถ้ายังไม่มี
+$hasFk = false;
+if ($rs = $conn->query("SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='Tbl_Venue' AND REFERENCED_TABLE_NAME='Tbl_Company'")) {
+  $hasFk = ($rs->num_rows > 0);
+  $rs->close();
+}
+if (!$hasFk) {
+  // ลบ constraint เดิมชื่อไม่แน่นอนก่อน (ถ้ามี)
+  @$conn->query("ALTER TABLE Tbl_Venue DROP FOREIGN KEY fk_venue_company");
+  @$conn->query("ALTER TABLE Tbl_Venue ADD CONSTRAINT fk_venue_company
+                 FOREIGN KEY (CompanyID) REFERENCES Tbl_Company(CompanyID)
+                 ON UPDATE CASCADE ON DELETE RESTRICT");
+}
+
+// 4) Seed default company (ถ้ายังไม่มี)
+$defaultCompanyId = null;
+if ($r = $conn->query("SELECT CompanyID FROM Tbl_Company ORDER BY CompanyID LIMIT 1")) {
+  if ($row = $r->fetch_assoc()) $defaultCompanyId = (int)$row['CompanyID'];
+  $r->close();
+}
+if (!$defaultCompanyId) {
+  $conn->query("INSERT INTO Tbl_Company (CompanyName) VALUES ('Default Company')");
+  $defaultCompanyId = (int)$conn->insert_id;
+}
+
+// 5) ใส่ค่า CompanyID ให้สนามที่ยังเป็น NULL ทั้งหมด -> default company (ครั้งเดียว)
+$conn->query("UPDATE Tbl_Venue SET CompanyID = {$defaultCompanyId} WHERE CompanyID IS NULL");
+
 /* ===== role พื้นฐานของพนักงาน (กันลืม) ===== */
 @$conn->query("INSERT INTO Tbl_Role (RoleName)
                SELECT 'employee' FROM DUAL
@@ -40,11 +113,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['employee_id'], $_POST
     if ($empId === (int)$_SESSION['user_id'] && $roleName !== 'super_admin') {
       $message = "⚠️ ห้ามเปลี่ยนสิทธิ์ของตัวเองเป็นอย่างอื่นนอกจาก super_admin";
     } else {
-      $stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID=? WHERE EmployeeID=?");
-      $stmt->bind_param("ii", $rid, $empId);
-      if ($stmt->execute()) { $message = "✅ อัปเดตสิทธิ์พนักงานสำเร็จ"; }
-      else { $message = "❌ อัปเดตไม่สำเร็จ: ".htmlspecialchars($conn->error); }
-      $stmt->close();
+      if ($stmt = $conn->prepare("UPDATE Tbl_Employee SET RoleID=? WHERE EmployeeID=?")) {
+        $stmt->bind_param("ii", $rid, $empId);
+        if ($stmt->execute()) { $message = "✅ อัปเดตสิทธิ์พนักงานสำเร็จ"; }
+        else { $message = "❌ อัปเดตไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+        $stmt->close();
+      } else {
+        $message = "❌ เตรียมคำสั่งไม่สำเร็จ (พนักงาน)";
+      }
     }
   }
 }
@@ -55,28 +131,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_admin_action'
   $cid    = (int)($_POST['customer_id'] ?? 0);
 
   if ($action === 'assign') {
-    $companyId = (int)($_POST['company_id'] ?? 0);
+    $companyId   = (int)($_POST['company_id'] ?? 0);
     $companyRole = ($_POST['company_role'] ?? 'admin') === 'employee' ? 'employee' : 'admin';
     if ($companyId <= 0) {
       $message = "❌ กรุณาเลือกบริษัท";
     } else {
-      // ลูกค้าหนึ่งคนได้ 1 บริษัท (UPSERT ตาม CustomerID) — ถ้าต้องการหลายบริษัท ให้แก้ UNIQUE ที่ DB
-      $stmt = $conn->prepare("
-        INSERT INTO Tbl_Company_Admin (CompanyID, CustomerID, Role)
-        VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE CompanyID = VALUES(CompanyID), Role = VALUES(Role)
-      ");
-      $stmt->bind_param("iis", $companyId, $cid, $companyRole);
-      if ($stmt->execute()) { $message = "✅ แต่งตั้ง/ปรับสิทธิ์บริษัทสำเร็จ"; }
-      else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
-      $stmt->close();
+      $sql = "INSERT INTO Tbl_Company_Admin (CompanyID, CustomerID, Role)
+              VALUES (?, ?, ?)
+              ON DUPLICATE KEY UPDATE CompanyID=VALUES(CompanyID), Role=VALUES(Role)";
+      if ($stmt = $conn->prepare($sql)) {
+        $stmt->bind_param("iis", $companyId, $cid, $companyRole);
+        if ($stmt->execute()) { $message = "✅ แต่งตั้ง/ปรับสิทธิ์บริษัทสำเร็จ"; }
+        else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+        $stmt->close();
+      } else {
+        $message = "❌ เตรียมคำสั่งไม่สำเร็จ (แต่งตั้งบริษัท)";
+      }
     }
   } elseif ($action === 'revoke') {
-    $stmt = $conn->prepare("DELETE FROM Tbl_Company_Admin WHERE CustomerID=?");
-    $stmt->bind_param("i", $cid);
-    if ($stmt->execute()) { $message = "✅ ยกเลิกสิทธิ์สำเร็จ"; }
-    else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
-    $stmt->close();
+    if ($stmt = $conn->prepare("DELETE FROM Tbl_Company_Admin WHERE CustomerID=?")) {
+      $stmt->bind_param("i", $cid);
+      if ($stmt->execute()) { $message = "✅ ยกเลิกสิทธิ์สำเร็จ"; }
+      else { $message = "❌ ไม่สำเร็จ: ".htmlspecialchars($conn->error); }
+      $stmt->close();
+    } else {
+      $message = "❌ เตรียมคำสั่งไม่สำเร็จ (ยกเลิกสิทธิ์)";
+    }
   }
 }
 
@@ -252,13 +332,15 @@ h1{margin:0 0 10px} .sub{color:#64748b;margin:0 0 16px}
 
 <script>
 const q = document.getElementById('q');
-const tb = document.getElementById('tbl').querySelector('tbody');
-q && q.addEventListener('input', () => {
-  const t = q.value.toLowerCase().trim();
-  for (const tr of tb.querySelectorAll('tr')) {
-    tr.style.display = tr.innerText.toLowerCase().includes(t) ? '' : 'none';
-  }
-});
+const tb = document.getElementById('tbl')?.querySelector('tbody');
+if (q && tb) {
+  q.addEventListener('input', () => {
+    const t = q.value.toLowerCase().trim();
+    for (const tr of tb.querySelectorAll('tr')) {
+      tr.style.display = tr.innerText.toLowerCase().includes(t) ? '' : 'none';
+    }
+  });
+}
 </script>
 </body>
 </html>
