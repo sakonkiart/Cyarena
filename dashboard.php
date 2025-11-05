@@ -12,9 +12,10 @@ $role     = $_SESSION['role'] ?? 'customer';
 
 /* ===== Role helpers (FIXED) ===== */
 $isSuper    = ($role === 'super_admin');
-$isAdmin    = in_array($role, ['admin','type_admin'], true);   // แอดมินรวม type_admin
+$isAdmin    = in_array($role, ['admin','type_admin'], true);   // admin รวม type_admin
 $isEmployee = ($role === 'employee');
-$isStaffUIHide = ($isAdmin || $isEmployee);                    // ใช้บล็อก STAFF VIEW (แต่เราจะแสดง “ของฉัน” แทนการซ่อน)
+/* ✅ เปลี่ยนให้ซ่อนลิสต์สนามเฉพาะ employee เท่านั้น */
+$isStaffUIHide = $isEmployee;
 
 /* Avatar */
 $avatarPath  = $_SESSION['avatar_path'] ?? '';
@@ -31,9 +32,15 @@ if ($avatarPath && _exists_rel($avatarPath)) {
   );
 }
 
-/* ===== ดึงรายการสนาม (ลูกค้า/ซูเปอร์แอดมินเห็นปกติ) ===== */
+/* ===== ดึงรายการสนาม =====
+   - customer/super_admin: เห็นทั้งหมด (เดิม)
+   - admin/type_admin: เห็นเฉพาะที่ตัวเองสร้าง (WHERE CreatedByUserID = uid)
+   - employee: ไม่ดึง (เพราะซ่อนทั้งส่วนลิสต์) */
 $venues = [];
 if (!$isStaffUIHide) {
+  $uid = (int)($_SESSION['user_id'] ?? 0);
+  $ownerFilter = $isAdmin ? "WHERE v.CreatedByUserID = {$uid}" : "";  // ✅ filter เฉพาะ admin/type_admin
+
   $sql = "
   SELECT 
       v.*,
@@ -62,33 +69,12 @@ if (!$isStaffUIHide) {
   FROM Tbl_Venue v
   JOIN Tbl_Venue_Type vt ON v.VenueTypeID = vt.VenueTypeID
   LEFT JOIN Tbl_Review r ON v.VenueID = r.VenueID
+  {$ownerFilter}
   GROUP BY v.VenueID
   ORDER BY v.VenueName;
   ";
   if ($res = $conn->query($sql)) {
     $venues = $res->fetch_all(MYSQLI_ASSOC);
-  }
-}
-
-/* ===== (NEW) ดึง “สนามของฉัน” สำหรับ staff (admin/type_admin/employee) ===== */
-$myVenues = [];
-if ($isStaffUIHide) {
-  $uid = (int)($_SESSION['user_id'] ?? 0);
-  $sqlMy = "
-    SELECT v.VenueID, v.VenueName, v.ImageURL, v.PricePerHour, v.Status,
-           v.TimeOpen, v.TimeClose, v.Address,
-           vt.TypeName
-    FROM Tbl_Venue v
-    JOIN Tbl_Venue_Type vt ON vt.VenueTypeID = v.VenueTypeID
-    WHERE v.CreatedByUserID = ?
-    ORDER BY v.VenueName
-  ";
-  if ($st = $conn->prepare($sqlMy)) {
-    $st->bind_param("i", $uid);
-    $st->execute();
-    $rs = $st->get_result();
-    while ($r = $rs->fetch_assoc()) $myVenues[] = $r;
-    $st->close();
   }
 }
 
@@ -132,10 +118,10 @@ $conn->close();
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 <?php echo preg_replace('/^/m','',<<<'CSS'
-/* ====== (สไตล์ทั้งหมดคงเดิม) ====== */
 :root{--primary:#2563eb;--primary-dark:#1e40af;--primary-light:#3b82f6;--secondary:#eab308;--accent:#f97316;--danger:#dc2626;--dark:#1c1917;--white:#ffffff;--gray-50:#fafaf9;--gray-100:#f5f5f4;--gray-200:#e7e5e4;--gray-700:#44403c;--gray-900:#1c1917;--turf-green:#16a34a;--court-orange:#f97316;--field-blue:#0ea5e9}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:var(--gray-900);line-height:1.6}
+/* TOPBAR/HEADER/NAV… (เหมือนเดิมทั้งหมด) */
 .top-bar{background:linear-gradient(135deg,var(--primary-dark) 0%,var(--primary) 100%);color:#fff;padding:.5rem 0;font-size:.875rem}
 .top-bar-container{max-width:1400px;margin:0 auto;padding:0 2rem;display:flex;justify-content:space-between;align-items:center}
 .top-bar-info{display:flex;gap:2rem}
@@ -169,12 +155,13 @@ body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:va
 .dropdown-item{display:flex;align-items:center;gap:.75rem;padding:.875rem 1.25rem;color:var(--gray-900);text-decoration:none;border-bottom:1px solid var(--gray-200);transition:.2s;font-weight:600}
 .dropdown-item:hover{background:var(--gray-50);color:var(--primary);padding-left:1.5rem}
 .dropdown-item:last-child{border-bottom:none;color:var(--danger)}
+/* PROMO/HERO/QUICK ACTIONS/FILTERS/VENUES/FOOTER เหมือนเดิม (คงไว้) */
 .promo-bar{background:linear-gradient(90deg,var(--secondary) 0%,var(--accent) 50%,var(--secondary) 100%);background-size:200% 100%;animation:gradientShift 4s ease-in-out infinite;color:#fff;padding:1rem 0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)}
 @keyframes gradientShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 .promo-content{display:flex;white-space:nowrap}
 .promo-text{display:inline-block;padding-left:100%;animation:scrollPromo 40s linear infinite;font-weight:800;font-size:1rem;letter-spacing:.5px;text-shadow:0 2px 4px rgba(0,0,0,.2)}
 @keyframes scrollPromo{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.hero{background:linear-gradient(135deg,rgba(37,99,235,.95) 0%,rgba(30,64,175,.95) 100%),url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grass" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse"><rect fill="%232563eb" width="20" height="20"/><path d="M0 10h20M10 0v20" stroke="%231e40af" stroke-width="0.5" opacity="0.3"/></pattern></defs><rect width="100" height="100" fill="url(%23grass)"/></svg>');color:#fff;padding:4rem 2rem;position:relative;overflow:hidden}
+.hero{background:linear-gradient(135deg,rgba(37,99,235,.95) 0%,rgba(30,64,175,.95) 100%),url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grass" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse"><rect fill=\"%232563eb\" width=\"20\" height=\"20\"/><path d=\"M0 10h20M10 0v20\" stroke=\"%231e40af\" stroke-width=\"0.5\" opacity=\"0.3\"/></pattern></defs><rect width=\"100\" height=\"100\" fill=\"url(%23grass)\"/></svg>');color:#fff;padding:4rem 2rem;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 40px,rgba(255,255,255,.03) 40px,rgba(255,255,255,.03) 80px)}
 .hero-container{max-width:1400px;margin:0 auto;position:relative;z-index:1}
 .hero-content{max-width:900px;text-align:center;margin:0 auto}
@@ -194,6 +181,7 @@ body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:va
 .action-icon{width:80px;height:80px;margin:0 auto 1rem;background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:2.5rem;box-shadow:0 8px 16px rgba(37,99,235,.3)}
 .action-title{font-size:1.25rem;font-weight:800;color:var(--gray-900);margin-bottom:.5rem}
 .action-desc{font-size:.9375rem;color:var(--gray-700);font-weight:500}
+/* FILTERS / VENUE CARDS / FOOTER / RESPONSIVE / EMPTY STATE (คงเดิม) */
 .filters-section,.venues-section{max-width:1400px;margin:0 auto 3rem;padding:0 2rem}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem}
 .section-title{font-family:'Kanit',sans-serif;font-size:2rem;font-weight:900;color:var(--gray-900);display:flex;align-items:center;gap:.75rem}
@@ -226,7 +214,7 @@ body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:va
 .stars{color:#f59e0b;font-size:1.125rem}
 .rating-text{font-size:.875rem;color:var(--gray-900);font-weight:700}
 .venue-actions{display:flex;gap:1rem}
-.btn{flex:1;padding:1rem;border:none;border-radius:12px;font-weight:800;cursor:pointer;transition:.3s;text-decoration:none;text-align:center;display:inline-flex;align-items:center;justify-content:space-between;gap:.5rem;font-size:1rem}
+.btn{flex:1;padding:1rem;border:none;border-radius:12px;font-weight:800;cursor:pointer;transition:.3s;text-decoration:none;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;font-size:1rem}
 .btn-primary{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.4);border:2px solid var(--primary-light)}
 .btn-primary:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(37,99,235,.5)}
 .btn-secondary{background:#fff;color:var(--primary);border:2px solid var(--primary)}
@@ -252,96 +240,203 @@ CSS
 </style>
 </head>
 <body>
-<!-- TOP BAR / HEADER / PROMO / HERO / QUICK ACTIONS เหมือนเดิมทั้งหมด (คงไว้) -->
-<!-- … (ย่อเพื่อความสั้น — ใช้ของเดิมจากไฟล์ที่ให้มา) … -->
 
-<?php /* === จากไฟล์เดิมของคุณ ตัดมาจนถึงก่อนส่วน <section class="venues-section" id="venues"> แรก === */ ?>
+<!-- ========== TOP BAR ========== -->
+<div class="top-bar">
+  <div class="top-bar-container">
+    <div class="top-bar-info">
+      <div class="top-bar-item">📞 <span>02-XXX-XXXX</span></div>
+      <div class="top-bar-item">📧 <span>contact@cyarena.com</span></div>
+      <div class="top-bar-item">⏰ <span>เปิดให้บริการ 06:00 - 23:00 น.</span></div>
+    </div>
+    <div>🎁 <strong>สมัครสมาชิก</strong> รับส่วนลด 20%</div>
+  </div>
+</div>
 
-<?php if ($isStaffUIHide): ?>
-  <!-- ===== STAFF VIEW: แสดงเฉพาะ “สนามที่ฉันสร้าง” ===== -->
-  <section class="venues-section" id="venues">
-    <div class="section-header">
-      <h2 class="section-title">โหมดผู้ดูแล — สนามของฉัน</h2>
+<!-- ========== HEADER ========== -->
+<header class="header">
+  <div class="header-container">
+    <a href="dashboard.php" class="logo">
+      <div class="logo-icon">⚽</div>
+      <div class="logo-text">
+        <div class="logo-title">CY ARENA</div>
+        <div class="logo-subtitle">Sports Booking System</div>
+      </div>
+    </a>
+    
+    <nav class="nav-menu">
+      <?php if ($role === 'customer'): ?>
+        <a href="my_bookings.php" class="nav-link">📋 การจองของฉัน</a>
+        <a href="bookings_calendar_public.php" class="nav-link">📅 ปฏิทินสนาม</a>
+        <a href="my_reviews.php" class="nav-link">⭐ รีวิวของฉัน</a>
+        <a href="promotion.php" class="nav-link promo-link">
+          🎁 โปรโมชั่น <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?= $activePromoCount ?></span><?php endif; ?>
+        </a>
+      <?php elseif ($isAdmin || $isEmployee): ?>
+        <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
+        <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
+        <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
+        <a href="promotion.php" class="nav-link promo-link">
+          🎁 โปรโมชั่น <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?= $activePromoCount ?></span><?php endif; ?>
+        </a>
+        <a href="report.php" class="nav-link">📊 รายงาน</a>
+      <?php elseif ($isSuper): ?>
+        <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
+        <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
+        <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
+        <a href="promotion_manage.php" class="nav-link promo-link">
+          🎁 จัดการโปรโมชั่น <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?= $activePromoCount ?></span><?php endif; ?>
+        </a>
+        <a href="report.php" class="nav-link">📊 รายงาน</a>
+        <a href="super_admin_grant.php" class="nav-link">👑 ให้สิทธิ์ผู้ใช้</a>
+      <?php endif; ?>
+    </nav>
+    
+    <div class="user-section">
+      <div class="user-menu">
+        <div class="user-trigger">
+          <img src="<?= htmlspecialchars($avatarSrc); ?>" alt="avatar" class="user-avatar">
+          <span class="user-name"><?= htmlspecialchars($userName); ?></span>
+        </div>
+        <div class="user-dropdown">
+          <div class="dropdown-header">
+            <div class="dropdown-header-name"><?= htmlspecialchars($userName); ?></div>
+            <?php if ($isSuper): ?>
+              <div class="dropdown-header-role">👑 Super Admin</div>
+            <?php elseif ($isAdmin || $isEmployee): ?>
+              <div class="dropdown-header-role">👨‍💼 Admin</div>
+            <?php else: ?>
+              <div class="dropdown-header-role">👤 ลูกค้า</div>
+            <?php endif; ?>
+          </div>
+          <a href="profile_edit.php" class="dropdown-item">✏️ แก้ไขโปรไฟล์</a>
+          <?php if ($isSuper): ?><a href="super_admin_grant.php" class="dropdown-item">👑 ให้สิทธิ์ผู้ใช้</a><?php endif; ?>
+          <a href="logout.php" class="dropdown-item">🚪 ออกจากระบบ</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ========== PROMO BAR ========== -->
+<div class="promo-bar">
+  <div class="promo-content">
+    <span class="promo-text">⚽ โปรพิเศษ! ลด 20% ทุกวันธรรมดา 🏀 จองครบ 3 ชม. ฟรี 1 ชม. 🎾 สมาชิกใหม่ลดทันที 50 บาท 🏸 โปรศุกร์-เสาร์-อาทิตย์ ลดสูงสุด 30% 🏐 จองออนไลน์รับคะแนนสะสม ⚾ แนะนำเพื่อนรับส่วนลดเพิ่ม</span>
+  </div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section class="hero">
+  <div class="hero-container">
+    <div class="hero-content">
+      <div class="hero-badge">⭐ ระบบจองสนามกีฬา อันดับ 1</div>
+      <h1 class="hero-title">จองสนามกีฬา<br><span class="hero-highlight">ง่าย รวดเร็ว ปลอดภัย</span></h1>
+      <p class="hero-subtitle">เลือกสนามกีฬาที่คุณชอบ จองได้ทันที ไม่ต้องรอนาน<br>พร้อมโปรโมชั่นสุดคุ้มและระบบจัดการที่ทันสมัย</p>
+      <div class="search-box">
+        <input type="text" id="searchBox" class="search-input" placeholder="ค้นหาสนาม ประเภทกีฬา หรือสถานที่...">
+        <button class="search-btn">🔍 ค้นหา</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUICK ACTIONS ========== -->
+<section class="quick-actions">
+  <div class="actions-grid">
+    <div class="action-card" onclick="window.location.href='#venues'">
+      <div class="action-icon">🏟️</div>
+      <div class="action-title">สนามทั้งหมด</div>
+      <div class="action-desc"><?= $isStaffUIHide ? '—' : count($venues).' สนาม'; ?></div>
+    </div>
+    <div class="action-card" onclick="window.location.href='#venues'">
+      <div class="action-icon" style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);">✅</div>
+      <div class="action-title">พร้อมให้บริการ</div>
+      <div class="action-desc"><?= $readyCount; ?> สนาม</div>
     </div>
 
-    <?php if (empty($myVenues)): ?>
-      <div class="empty-state">
-        <div class="empty-state-icon">🛡️</div>
-        <div class="empty-state-title">ยังไม่มีสนามที่คุณสร้าง</div>
-        <div class="empty-state-text" style="margin-bottom:1.25rem">
-          ไปที่ <strong>จัดการสนามของฉัน</strong> เพื่อเพิ่มสนามใหม่ได้เลย
-        </div>
-        <div style="display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap;">
-          <a href="admin_venues.php" class="btn btn-secondary" style="min-width:220px">🏟️ จัดการสนามของฉัน</a>
-          <a href="manage_bookings.php" class="btn btn-primary" style="min-width:220px">🗂️ จัดการการจอง</a>
-        </div>
+    <?php if ($role === 'customer'): ?>
+      <div class="action-card" onclick="window.location.href='bookings_calendar_public.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
+        <div class="action-title">ปฏิทินการจอง</div>
+        <div class="action-desc">ดูตารางว่าง</div>
       </div>
-    <?php else: ?>
-      <div class="venue-grid" id="venueGrid">
-        <?php foreach ($myVenues as $v):
-          $img = $v['ImageURL'] ?: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=400&h=300&fit=crop';
-          $statusClass = match($v['Status']) {
-            'available'    => 'available',
-            'upcoming'     => 'upcoming',
-            'unavailable'  => 'unavailable',
-            'maintenance'  => 'maintenance',
-            'closed'       => 'closed',
-            default        => 'unavailable'
-          };
-          $statusText = match($v['Status']) {
-            'available'    => '🟢 ว่าง',
-            'upcoming'     => '🟡 มีจอง',
-            'unavailable'  => '🔴 ไม่ว่าง',
-            'maintenance'  => '🛠️ ปรับปรุง',
-            'closed'       => '🚫 ปิด',
-            default        => 'สถานะไม่ทราบ'
-          };
-        ?>
-          <div class="venue-card" data-type="<?= htmlspecialchars($v['TypeName']); ?>">
-            <div class="venue-image-wrapper">
-              <a href="venue_detail.php?venue_id=<?= (int)$v['VenueID']; ?>">
-                <img src="<?= htmlspecialchars($img); ?>" alt="" class="venue-image">
-              </a>
-              <span class="venue-badge <?= $statusClass; ?>"><?= $statusText; ?></span>
-              <span class="venue-type-badge"><?= htmlspecialchars($v['TypeName']); ?></span>
-            </div>
-            <div class="venue-content">
-              <a href="venue_detail.php?venue_id=<?= (int)$v['VenueID']; ?>" class="venue-name">
-                <?= htmlspecialchars($v['VenueName']); ?>
-              </a>
-              <div class="venue-info">
-                <div class="info-row"><span class="info-icon">🕐</span>
-                  <span>เวลาทำการ: <?= htmlspecialchars(substr($v['TimeOpen'] ?? '--:--', 0, 5)) ?>
-                    - <?= htmlspecialchars(substr($v['TimeClose'] ?? '--:--', 0, 5)) ?> น.</span>
-                </div>
-                <div class="info-row"><span class="info-icon">📍</span>
-                  <?php
-                    $addr = trim($v['Address'] ?? '—');
-                    $addrShort = function_exists('mb_strimwidth')
-                      ? mb_strimwidth($addr, 0, 50, '…', 'UTF-8')
-                      : (function_exists('mb_substr') ? mb_substr($addr, 0, 50, 'UTF-8') : $addr);
-                  ?>
-                  <span title="<?= htmlspecialchars($addr) ?>"><?= htmlspecialchars($addrShort) ?></span>
-                </div>
-              </div>
-              <div class="venue-price">
-                <div class="price-label">ราคาเริ่มต้น</div>
-                <div class="price-value">฿<?= number_format((float)$v['PricePerHour'], 0); ?> <span style="font-size:1rem;font-weight:600;">/ชม.</span></div>
-              </div>
-              <div class="venue-actions">
-                <a href="admin_venues.php" class="btn btn-secondary">✏️ แก้ไขสนาม</a>
-                <a href="booking.php?venue_id=<?= (int)$v['VenueID']; ?>" class="btn btn-primary">🎯 จองให้ลูกค้า</a>
-              </div>
-            </div>
-          </div>
-        <?php endforeach; ?>
+      <div class="action-card" onclick="window.location.href='my_bookings.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">📋</div>
+        <div class="action-title">การจองของฉัน</div>
+        <div class="action-desc">ตรวจสอบการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='promotion.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
+        <div class="action-title">โปรโมชั่นพิเศษ</div>
+        <div class="action-desc"><?= $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "ดูโปรโมชั่นทั้งหมด"; ?></div>
+      </div>
+
+    <?php elseif ($isAdmin || $isEmployee): ?>
+      <div class="action-card" onclick="window.location.href='bookings_calendar.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
+        <div class="action-title">ปฏิทินการจอง</div>
+        <div class="action-desc">ดูตารางการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='manage_bookings.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🛠️</div>
+        <div class="action-title">จัดการจอง</div>
+        <div class="action-desc">อนุมัติ/ปฏิเสธการจอง</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='admin_venues.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);">🏟️</div>
+        <div class="action-title">จัดการสนามของฉัน</div>
+        <div class="action-desc">สร้าง/แก้ไข สนามที่คุณสร้าง</div>
+      </div>
+
+    <?php elseif ($isSuper): ?>
+      <div class="action-card" onclick="window.location.href='manage_bookings.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🛠️</div>
+        <div class="action-title">จัดการการจอง</div>
+        <div class="action-desc">ดูและอนุมัติการจองทั้งหมด</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='admin_venues.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);">🏟️</div>
+        <div class="action-title">จัดการสนาม</div>
+        <div class="action-desc">สร้าง/แก้ไข/ลบ สนามทั้งหมด</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='promotion_manage.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
+        <div class="action-title">จัดการโปรโมชั่น</div>
+        <div class="action-desc"><?= $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "สร้างโปรใหม่"; ?></div>
+      </div>
+      <div class="action-card" onclick="window.location.href='report.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);">📊</div>
+        <div class="action-title">รายงาน</div>
+        <div class="action-desc">สรุปรายงานระบบ</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='super_admin_grant.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg,#a855f7 0%,#8b5cf6 100%);">👑</div>
+        <div class="action-title">ให้สิทธิ์ผู้ใช้</div>
+        <div class="action-desc">อัปเกรด/ลดสิทธิ์พนักงาน</div>
       </div>
     <?php endif; ?>
+  </div>
+</section>
+
+<?php if ($isStaffUIHide): ?>
+  <!-- STAFF VIEW: ซ่อนรายการสนาม (เฉพาะ employee เท่านั้น) -->
+  <section class="venues-section" id="venues">
+    <div class="section-header"><h2 class="section-title">โหมดผู้ดูแล</h2></div>
+    <div class="empty-state">
+      <div class="empty-state-icon">🛡️</div>
+      <div class="empty-state-title">หน้านี้ซ่อนรายการสนามสำหรับผู้ดูแล</div>
+      <div class="empty-state-text" style="margin-bottom:1.25rem">
+        เข้าจัดการ <strong>การจอง</strong> และ <strong>สนามของคุณ</strong> ได้ที่ปุ่มด้านล่าง
+      </div>
+      <div style="display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap;">
+        <a href="manage_bookings.php" class="btn btn-primary" style="min-width:220px">🗂️ จัดการการจอง</a>
+        <a href="admin_venues.php" class="btn btn-secondary" style="min-width:220px">🏟️ จัดการสนามของฉัน</a>
+      </div>
+    </div>
   </section>
 
 <?php else: ?>
-  <!-- ===== VIEW เดิม สำหรับ customer / super_admin (คงไว้เหมือนเดิม) ===== -->
-  <!-- FILTERS -->
+  <!-- FILTERS (ลูกค้า/ซูเปอร์แอดมิน และ admin/type_admin ที่ถูกกรองตามเจ้าของ) -->
   <section class="filters-section" id="venues">
     <div class="section-header">
       <h2 class="section-title">เลือกประเภทสนาม</h2>
@@ -363,7 +458,7 @@ CSS
     </div>
   </section>
 
-  <!-- VENUES -->
+  <!-- VENUES (ลูกค้า/ซูเปอร์แอดมิน เห็นทั้งหมด; admin/type_admin เห็นเฉพาะของตัวเอง) -->
   <section class="venues-section">
     <div class="section-header"><h2 class="section-title">สนามแนะนำ</h2></div>
     <div class="venue-grid" id="venueGrid">
@@ -435,8 +530,92 @@ CSS
   </section>
 <?php endif; ?>
 
-<!-- FOOTER + SCRIPT คงเดิมตามไฟล์ของคุณ -->
-<!-- … ใช้สคริปต์เดิมสำหรับ search/filter ได้เลย … -->
+<!-- ========== FOOTER ========== -->
+<footer class="footer">
+  <div class="footer-container">
+    <div class="footer-grid">
+      <div class="footer-section">
+        <h3>เกี่ยวกับเรา</h3>
+        <p style="color: rgba(255, 255, 255, 0.9); font-weight: 500; line-height: 1.8;">
+          CY Arena เป็นระบบจองสนามกีฬาออนไลน์ที่ทันสมัย 
+          ให้บริการครบวงจร จองง่าย รวดเร็ว ปลอดภัย
+        </p>
+      </div>
+      <div class="footer-section">
+        <h3>เมนูหลัก</h3>
+        <a href="dashboard.php" class="footer-link">หน้าแรก</a>
+        <a href="#venues" class="footer-link">สนามกีฬา</a>
+        <a href="my_bookings.php" class="footer-link">การจองของฉัน</a>
+        <a href="bookings_calendar_public.php" class="footer-link">ปฏิทิน</a>
+      </div>
+      <div class="footer-section">
+        <h3>ติดต่อเรา</h3>
+        <a href="tel:02-xxx-xxxx" class="footer-link">📞 02-XXX-XXXX</a>
+        <a href="mailto:contact@cyarena.com" class="footer-link">📧 contact@cyarena.com</a>
+        <a href="#" class="footer-link">📍 กรุงเทพมหานคร</a>
+      </div>
+      <div class="footer-section">
+        <h3>เวลาทำการ</h3>
+        <p style="color: rgba(255, 255, 255, 0.9); font-weight: 600; line-height: 1.8;">
+          จันทร์ - ศุกร์: 06:00 - 23:00<br>
+          เสาร์ - อาทิตย์: 06:00 - 24:00<br>
+          <strong style="color: var(--secondary);">เปิดบริการทุกวัน</strong>
+        </p>
+      </div>
+    </div>
+    <div class="footer-bottom">© 2025 CY Arena - ระบบจองสนามกีฬาออนไลน์ | Developed with ❤️</div>
+  </div>
+</footer>
+
+<script>
+// Promo ticker
+document.addEventListener('DOMContentLoaded', () => {
+  const promoText = document.querySelector('.promo-text');
+  if (promoText) { const t = promoText.textContent; promoText.textContent = t + '   ' + t; }
+});
+
+// Search + Filter (เฉพาะเมื่อมีการ์ดสนาม)
+const venueGrid = document.getElementById('venueGrid');
+if (venueGrid) {
+  const searchBox = document.getElementById('searchBox');
+  const searchBtn = document.querySelector('.search-btn');
+
+  function performSearch() {
+    const query = (searchBox?.value || '').toLowerCase().trim();
+    const cards = document.querySelectorAll('.venue-card');
+    cards.forEach(card => {
+      const venueName = card.querySelector('.venue-name').textContent.toLowerCase();
+      const venueType = (card.dataset.type || '').toLowerCase();
+      card.style.display = (venueName.includes(query) || venueType.includes(query) || query === '') ? 'block' : 'none';
+    });
+    if (query !== '') document.getElementById('venues')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (searchBox && searchBtn) {
+    searchBox.addEventListener('input', performSearch);
+    searchBtn.addEventListener('click', performSearch);
+    searchBox.addEventListener('keypress', e => { if (e.key === 'Enter') performSearch(); });
+  }
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filterType = btn.dataset.type;
+      document.querySelectorAll('.venue-card').forEach(card => {
+        card.style.display = (filterType === 'all' || card.dataset.type === filterType) ? 'block' : 'none';
+      });
+    });
+  });
+}
+
+// Smooth scroll
+document.querySelectorAll('a[href^="#"]').forEach(a=>{
+  a.addEventListener('click',e=>{
+    const target = document.querySelector(a.getAttribute('href'));
+    if(target){ e.preventDefault(); target.scrollIntoView({behavior:'smooth',block:'start'}); }
+  });
+});
+</script>
 
 </body>
 </html>
