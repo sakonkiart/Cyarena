@@ -237,10 +237,18 @@ $sql = "SELECT b.BookingID, b.VenueID, v.VenueName, c.FirstName, c.LastName, c.P
         JOIN Tbl_Payment_Status ps ON b.PaymentStatusID = ps.PaymentStatusID
         WHERE 1=1";
 
+/* --- กรองตามสิทธิ์ผู้ใช้ --- */
 if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
     $sql .= " AND v.VenueTypeID = " . (int)$TYPE_ADMIN_VTID;
 }
 
+/* >>>> ADD: admin/employee เห็นเฉพาะการจองของสนามที่ตัวเองสร้าง */
+if ($IS_ADMIN || $IS_EMPLOYEE) {
+    $sql .= " AND v.CreatedByUserID = " . (int)$employee_id;
+}
+/* super_admin ไม่กรองอะไรเพิ่มเติม */
+
+/* --- ฟิลเตอร์เดิม --- */
 if ($search !== '') {
     $search_safe = $conn->real_escape_string($search);
     $sql .= " AND (c.FirstName LIKE '%$search_safe%' OR c.LastName LIKE '%$search_safe%' OR v.VenueName LIKE '%$search_safe%' OR b.BookingID LIKE '%$search_safe%')";
