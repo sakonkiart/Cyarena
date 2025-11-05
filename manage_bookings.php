@@ -826,3 +826,4 @@ if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for
     unset($_SESSION['role_backup_for_type_admin']);
 }
 ?>
+
