@@ -25,9 +25,9 @@ if (!in_array($ROLE, ['admin','employee','super_admin'], true)) {
 
 /* ใช้ require_once กันประกาศซ้ำ */
 require_once __DIR__ . '/db_connect.php';
+@$conn->query("SET time_zone = '+07:00'");
 
-
-/* ===== Schema guard: เพิ่ม/ปรับคอลัมน์และดัชนีถ้ายังไม่มี (ไม่ใช้ IF NOT EXISTS) ===== */
+/* ======================= COMPANY SCOPE HELPERS (เพิ่มเฉพาะที่จำเป็น) ======================= */
 function colExists(mysqli $c, string $table, string $column): bool {
     $sql = "SELECT 1
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -53,31 +53,36 @@ function idxExists(mysqli $c, string $table, string $index): bool {
     return $ok;
 }
 
+/* ----- บังคับให้ Tbl_Venue มี CompanyID + index (แตะเท่าที่จำเป็น) ----- */
 try {
-    // CreatedByUserID
-    if (!colExists($conn, 'Tbl_Venue', 'CreatedByUserID')) {
-        $conn->query("ALTER TABLE `Tbl_Venue` ADD COLUMN `CreatedByUserID` INT NULL");
+    if (!colExists($conn, 'Tbl_Venue', 'CompanyID')) {
+        $conn->query("ALTER TABLE `Tbl_Venue` ADD COLUMN `CompanyID` INT NULL AFTER `VenueID`");
     }
-
-    // CreatedByRole (ให้รองรับ 'admin' ด้วย)
-    if (!colExists($conn, 'Tbl_Venue', 'CreatedByRole')) {
-        $conn->query("ALTER TABLE `Tbl_Venue`
-                      ADD COLUMN `CreatedByRole` ENUM('super_admin','admin','employee') NULL");
-    } else {
-        // บังคับปรับ ENUM ให้มีค่าครบ (กันฐานเก่าที่ยังไม่มี 'admin')
-        $conn->query("ALTER TABLE `Tbl_Venue`
-                      MODIFY COLUMN `CreatedByRole` ENUM('super_admin','admin','employee') NULL");
-    }
-
-    // index
-    if (!idxExists($conn, 'Tbl_Venue', 'idx_creator')) {
-        $conn->query("ALTER TABLE `Tbl_Venue`
-                      ADD INDEX `idx_creator` (`CreatedByUserID`,`CreatedByRole`)");
+    if (!idxExists($conn, 'Tbl_Venue', 'idx_venue_company')) {
+        $conn->query("ALTER TABLE `Tbl_Venue` ADD INDEX `idx_venue_company` (`CompanyID`)");
     }
 } catch (Throwable $e) {
     error_log('[admin_venues schema guard] '.$e->getMessage());
 }
-/* ===== END Schema guard ===== */
+
+/** ดึง CompanyID ของ admin รายบริษัท (ผูกใน Tbl_Company_Admin.CustomerID) */
+function getCompanyIdForCurrentAdmin(mysqli $conn, int $userId, string $role): ?int {
+    if ($role === 'super_admin') return null; // เห็นทุกบริษัท
+    // ในระบบนี้สิทธิ์ admin รายบริษัทผูกที่ตาราง Tbl_Company_Admin โดย CustomerID หมายถึง user_id ของลูกค้า
+    $sql = "SELECT ca.CompanyID
+            FROM Tbl_Company_Admin ca
+            WHERE ca.CustomerID = ?
+            LIMIT 1";
+    if ($st = $conn->prepare($sql)) {
+        $st->bind_param("i", $userId);
+        $st->execute();
+        $rs = $st->get_result();
+        if ($row = $rs->fetch_assoc()) return (int)$row['CompanyID'];
+    }
+    return null;
+}
+$MY_COMPANY_ID = $IS_SUPER ? null : getCompanyIdForCurrentAdmin($conn, $ME_ID, $ROLE);
+/* =================== END COMPANY SCOPE HELPERS =================== */
 
 
 /* Fetch venue types for dropdown (ไม่จำกัดประเภทแล้ว) */
@@ -94,14 +99,18 @@ $editRow = null;
 if (isset($_GET['id']) && ctype_digit($_GET['id'])) {
     $vid = (int)$_GET['id'];
 
-    /* >>> OWNER-SCOPE: ถ้าไม่ใช่ super_admin ต้องเป็นเจ้าของสนามเท่านั้นถึงจะแก้ได้ */
+    /* >>> COMPANY-SCOPE: ถ้าไม่ใช่ super_admin ต้องเป็นสนามในบริษัทเดียวกันเท่านั้นถึงจะแก้ได้ */
     if ($IS_SUPER) {
         $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ?");
         $stmt->bind_param("i", $vid);
     } else {
+        if (!$MY_COMPANY_ID) {
+            echo "<h2 style='color:#b45309;text-align:center;margin-top:50px;'>⚠️ คุณยังไม่ได้รับสิทธิ์บริษัทจาก super_admin</h2>";
+            exit;
+        }
         $stmt = $conn->prepare("SELECT * FROM Tbl_Venue
-                                WHERE VenueID = ? AND CreatedByUserID = ? AND CreatedByRole = ?");
-        $stmt->bind_param("iis", $vid, $ME_ID, $ROLE);
+                                WHERE VenueID = ? AND CompanyID = ?");
+        $stmt->bind_param("ii", $vid, $MY_COMPANY_ID);
     }
     $stmt->execute();
     $editRow = $stmt->get_result()->fetch_assoc();
@@ -109,12 +118,12 @@ if (isset($_GET['id']) && ctype_digit($_GET['id'])) {
     if ($editRow) $editing = true;
 
     if (!$IS_SUPER && !$editing) {
-        echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่ใช่เจ้าของสนามนี้</h2>";
+        echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์แก้ไขสนามนี้</h2>";
         exit;
     }
 }
 
-/* Fetch venues (มีค้นหา) — ถ้าไม่ใช่ super_admin ให้เห็นเฉพาะที่ตัวเองสร้าง */
+/* Fetch venues (มีค้นหา) — ถ้าไม่ใช่ super_admin ให้เห็นเฉพาะบริษัทเดียวกัน */
 $venues = [];
 $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 
@@ -128,18 +137,26 @@ if ($search !== '') {
                                 ORDER BY v.VenueID DESC");
         $stmt->bind_param("sss", $like, $like, $like);
     } else {
-        $stmt = $conn->prepare("SELECT v.*, t.TypeName
-                                FROM Tbl_Venue v
-                                JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
-                                WHERE (v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?)
-                                  AND v.CreatedByUserID = ? AND v.CreatedByRole = ?
-                                ORDER BY v.VenueID DESC");
-        // 👇 types: s s s i s
-        $stmt->bind_param("sssis", $like, $like, $like, $ME_ID, $ROLE);
+        if (!$MY_COMPANY_ID) {
+            $venues = []; // ยังไม่ได้สิทธิ์บริษัท
+        } else {
+            $stmt = $conn->prepare("SELECT v.*, t.TypeName
+                                    FROM Tbl_Venue v
+                                    JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
+                                    WHERE (v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?)
+                                      AND v.CompanyID = ?
+                                    ORDER BY v.VenueID DESC");
+            $stmt->bind_param("sssi", $like, $like, $like, $MY_COMPANY_ID);
+            $stmt->execute();
+            $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+        }
     }
-    $stmt->execute();
-    $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
+    if ($IS_SUPER) {
+        $stmt->execute();
+        $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    }
 } else {
     if ($IS_SUPER) {
         $sql = "SELECT v.*, t.TypeName
@@ -151,15 +168,19 @@ if ($search !== '') {
             $res->free();
         }
     } else {
-        $stmt = $conn->prepare("SELECT v.*, t.TypeName
-                                FROM Tbl_Venue v
-                                JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
-                                WHERE v.CreatedByUserID = ? AND v.CreatedByRole = ?
-                                ORDER BY v.VenueID DESC");
-        $stmt->bind_param("is", $ME_ID, $ROLE);
-        $stmt->execute();
-        $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
+        if ($MY_COMPANY_ID) {
+            $stmt = $conn->prepare("SELECT v.*, t.TypeName
+                                    FROM Tbl_Venue v
+                                    JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
+                                    WHERE v.CompanyID = ?
+                                    ORDER BY v.VenueID DESC");
+            $stmt->bind_param("i", $MY_COMPANY_ID);
+            $stmt->execute();
+            $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+        } else {
+            $venues = []; // ยังไม่ได้สิทธิ์บริษัท
+        }
     }
 }
 
@@ -287,6 +308,13 @@ textarea.form-control-modern{resize:vertical}
         </form>
     </div>
 
+    <?php if(!$IS_SUPER && !$MY_COMPANY_ID): ?>
+      <div class="alert alert-warning alert-modern" role="alert" style="background:#fff7ed;border:1px solid #fed7aa">
+        <i class="fas fa-info-circle me-2"></i>
+        คุณยังไม่ได้รับสิทธิ์บริษัทจาก <strong>super_admin</strong> จึงยังไม่สามารถเห็น/จัดการสนามได้
+      </div>
+    <?php endif; ?>
+
     <div class="row">
         <div class="col-lg-5">
             <div class="card-modern">
@@ -298,6 +326,11 @@ textarea.form-control-modern{resize:vertical}
                     <form action="venue_save.php" method="post" enctype="multipart/form-data">
                         <?php if ($editing): ?>
                             <input type="hidden" name="VenueID" value="<?= (int)$editRow['VenueID'] ?>">
+                        <?php endif; ?>
+
+                        <?php if(!$IS_SUPER && $MY_COMPANY_ID): ?>
+                            <!-- ส่ง CompanyID ของ admin ไปให้หน้า save จัดการผูกบริษัท -->
+                            <input type="hidden" name="CompanyID" value="<?= (int)$MY_COMPANY_ID ?>">
                         <?php endif; ?>
                         
                         <div class="mb-3">
@@ -379,7 +412,7 @@ textarea.form-control-modern{resize:vertical}
         <div class="col-lg-7">
             <div class="card-modern">
                 <div class="card-header-modern">
-                    <i class="fas fa-list me-2"></i>รายการสนามทั้งหมด<?= $IS_SUPER ? '' : ' (ของฉัน)' ?>
+                    <i class="fas fa-list me-2"></i>รายการสนามทั้งหมด<?= $IS_SUPER ? '' : ' (ตามบริษัทของฉัน)' ?>
                 </div>
                 <div class="p-0">
                     <div class="table-responsive">
@@ -423,6 +456,9 @@ textarea.form-control-modern{resize:vertical}
 
         <form action="venue_set_status.php" method="post" class="d-inline">
             <input type="hidden" name="VenueID" value="<?= (int)$v['VenueID'] ?>">
+            <?php if (!$IS_SUPER && $MY_COMPANY_ID): ?>
+              <input type="hidden" name="CompanyID" value="<?= (int)$MY_COMPANY_ID ?>">
+            <?php endif; ?>
             <?php if (($v['Status'] ?? 'available') !== 'maintenance'): ?>
               <input type="hidden" name="Status" value="maintenance">
               <button class="btn btn-action btn-status-warning">
@@ -439,6 +475,9 @@ textarea.form-control-modern{resize:vertical}
         <form action="venue_delete.php" method="post" class="d-inline"
               onsubmit="return confirm('ยืนยันลบสนามนี้หรือไม่? การลบไม่สามารถกู้คืนได้');">
             <input type="hidden" name="VenueID" value="<?= (int)$v['VenueID'] ?>">
+            <?php if (!$IS_SUPER && $MY_COMPANY_ID): ?>
+              <input type="hidden" name="CompanyID" value="<?= (int)$MY_COMPANY_ID ?>">
+            <?php endif; ?>
             <button class="btn btn-action btn-delete">
                 <i class="fas fa-trash me-1"></i>ลบ
             </button>
