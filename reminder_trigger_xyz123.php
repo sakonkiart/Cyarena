@@ -1,5 +1,5 @@
 <?php
-// reminder_trigger_xyz123.php (final)
+// reminder_trigger_xyz123.php (final, patched)
 session_start();
 
 /* ---------- SECURITY TOKEN ---------- */
@@ -20,21 +20,33 @@ use PHPMailer\PHPMailer\Exception;
 
 @$conn->query("SET time_zone = '+07:00'");
 
-/* ---------- ENSURE COLUMNS EXIST ---------- */
+/* ---------- ENSURE COLUMNS/INDEX EXIST ---------- */
 function ensureColumn(mysqli $c, $table, $col, $def) {
   $q = "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=? LIMIT 1";
-  $st = $c->prepare($q);
-  $st->bind_param("ss",$table,$col);
-  $st->execute(); $st->store_result();
-  $ok = $st->num_rows > 0;
-  $st->close();
-  if (!$ok) {
-    $c->query("ALTER TABLE `$table` ADD COLUMN `$col` $def");
+  if ($st = $c->prepare($q)) {
+    $st->bind_param("ss",$table,$col);
+    $st->execute(); $st->store_result();
+    $exists = $st->num_rows > 0;
+    $st->close();
+    if (!$exists) { @$c->query("ALTER TABLE `$table` ADD COLUMN `$col` $def"); }
+  }
+}
+function ensureIndex(mysqli $c, $table, $index, $cols) {
+  $q = "SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME=? AND INDEX_NAME=? LIMIT 1";
+  if ($st = $c->prepare($q)) {
+    $st->bind_param("ss",$table,$index);
+    $st->execute(); $st->store_result();
+    $exists = $st->num_rows > 0;
+    $st->close();
+    if (!$exists) { @$c->query("CREATE INDEX `$index` ON `$table` ($cols)"); }
   }
 }
 ensureColumn($conn, 'Tbl_Booking', 'ConfirmationEmailSent', "TINYINT(1) NOT NULL DEFAULT 0");
 ensureColumn($conn, 'Tbl_Booking', 'Notification1hSent',   "TINYINT(1) NOT NULL DEFAULT 0");
+ensureIndex ($conn, 'Tbl_Booking', 'idx_booking_1h',
+  "BookingStatusID, PaymentStatusID, StartTime, ConfirmationEmailSent, Notification1hSent");
 
 /* ---------- MAILER ---------- */
 function sendEmail($toEmail, $toName, $subject, $html) {
@@ -43,14 +55,14 @@ function sendEmail($toEmail, $toName, $subject, $html) {
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'valorantwhq2548@gmail.com';     // <<< Gmail ของคุณ
-    $mail->Password   = 'rzwx bonp logd gaug';          // <<< App Password
+    $mail->Username   = 'valorantwhq2548@gmail.com';     // Gmail ของคุณ
+    $mail->Password   = 'rzwx bonp logd gaug';           // App Password
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
     $mail->isHTML(true);
 
-    // ใช้ From เป็น Gmail เดียวกับ SMTP (ป้องกัน DMARC)
+    // ใช้ From เดียวกับ SMTP (กัน DMARC/ SPF)
     $mail->setFrom('valorantwhq2548@gmail.com', 'CY Arena Booking');
     $mail->addAddress($toEmail, $toName);
 
@@ -85,10 +97,14 @@ function bookingRow(mysqli $c, int $bookingID) {
   return $row;
 }
 
+/* ---------- ALLOWED "PAID" NAMES (TH/EN) ---------- */
+$PAID_NAMES = ["paid","paid_confirmed","ชำระเงินสำเร็จ","ชำระเงินแล้ว"];
+
 /* ---------- MODE 1: CONFIRMATION TRIGGER ---------- */
 if (isset($_GET['booking_id']) && ctype_digit($_GET['booking_id'])) {
   $bookingID = (int)$_GET['booking_id'];
 
+  // ใช้รายชื่อสถานะชำระเงินที่อนุญาตแบบคงที่ใน SQL
   $q = "SELECT b.BookingID, b.StartTime, b.EndTime,
                c.Email, CONCAT(c.FirstName,' ',c.LastName) AS CustomerName,
                v.VenueName,
@@ -99,7 +115,7 @@ if (isset($_GET['booking_id']) && ctype_digit($_GET['booking_id'])) {
         JOIN Tbl_Payment_Status ps ON ps.PaymentStatusID = b.PaymentStatusID
         WHERE b.BookingID = ?
           AND b.BookingStatusID = 2
-          AND ps.StatusName IN ('paid','paid_confirmed')
+          AND ps.StatusName IN ('paid','paid_confirmed','ชำระเงินสำเร็จ','ชำระเงินแล้ว')
           AND b.ConfirmationEmailSent = 0
         LIMIT 1";
   $st = $conn->prepare($q);
@@ -135,8 +151,9 @@ if (isset($_GET['booking_id']) && ctype_digit($_GET['booking_id'])) {
 }
 
 /* ---------- MODE 2: 1-HOUR REMINDER (CRON) ---------- */
+/* ขยายหน้าต่างเวลาให้ครอบคลุมความคลาดเคลื่อนของ cron */
 $winStart = date('Y-m-d H:i:00', strtotime('+60 minutes'));
-$winEnd   = date('Y-m-d H:i:59', strtotime('+61 minutes'));
+$winEnd   = date('Y-m-d H:i:59', strtotime('+66 minutes'));
 
 $sql = "SELECT b.BookingID, b.StartTime, b.EndTime,
                c.Email, CONCAT(c.FirstName,' ',c.LastName) AS CustomerName,
@@ -146,10 +163,10 @@ $sql = "SELECT b.BookingID, b.StartTime, b.EndTime,
         JOIN Tbl_Venue v    ON v.VenueID    = b.VenueID
         JOIN Tbl_Payment_Status ps ON ps.PaymentStatusID = b.PaymentStatusID
         WHERE b.BookingStatusID = 2
-          AND ps.StatusName IN ('paid','paid_confirmed')
+          AND ps.StatusName IN ('paid','paid_confirmed','ชำระเงินสำเร็จ','ชำระเงินแล้ว')
           AND b.Notification1hSent = 0
           AND b.StartTime >= ? AND b.StartTime <= ?
-        LIMIT 200";
+        LIMIT 500";
 $st = $conn->prepare($sql);
 if (!$st) { http_response_code(500); die("DB prepare failed"); }
 $st->bind_param("ss", $winStart, $winEnd);
