@@ -15,6 +15,8 @@ $isSuper    = ($role === 'super_admin');
 $isAdmin    = ($role === 'type_admin');
 $isEmployee = ($role === 'employee');          // <<< ADD
 $isStaffUIHide = ($isAdmin || $isEmployee);    // <<< ADD: ซ่อนรายการสนามสำหรับ admin/employee
+$isAdmin    = in_array($role, ['admin','type_admin'], true);
+
 
 // Avatar
 $avatarPath  = $_SESSION['avatar_path'] ?? '';
