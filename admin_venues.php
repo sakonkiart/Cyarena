@@ -4,7 +4,7 @@
 
 session_start();
 
-/* >>> ADD: ป้องกัน cache ให้โหลดข้อมูลสดหลัง redirect เสมอ */
+/* ป้องกัน cache ให้โหลดข้อมูลสดหลัง redirect เสมอ */
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
@@ -14,29 +14,31 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-/* >>> ADD: รองรับสิทธิ์ type_admin (จำกัดตามประเภทสนามที่ได้รับมอบหมาย) */
-$IS_TYPE_ADMIN   = false;
-$TYPE_ADMIN_VTID = 0;
-$TYPE_ADMIN_NAME = '';
-if (isset($_SESSION['role']) && $_SESSION['role'] === 'type_admin') {
-    $IS_TYPE_ADMIN   = true;
-    $TYPE_ADMIN_VTID = (int)($_SESSION['type_admin_venue_type_id'] ?? 0);
-    $TYPE_ADMIN_NAME = (string)($_SESSION['type_admin_type_name'] ?? '');
-    // สวมบทเป็น employee ชั่วคราวเพื่อผ่านการตรวจบทบาทเดิม
-    $_SESSION['role_backup_for_type_admin'] = 'type_admin';
-    $_SESSION['role'] = 'employee';
-}
-// <<< END ADD
+/* สิทธิ์เข้าใช้งาน:
+   - super_admin: อนุญาต, เห็นได้ทุกบริษัท
+   - admin/employee: ต้องมี company_id และเห็นเฉพาะบริษัทของตัวเอง
+*/
+$ROLE        = $_SESSION['role'] ?? '';
+$COMPANY_ID  = (int)($_SESSION['company_id'] ?? 0);
+$IS_SUPER    = ($ROLE === 'super_admin');
+$IS_ADMIN    = ($ROLE === 'admin');
+$IS_EMP      = ($ROLE === 'employee');
 
-// ✅ ตรวจสอบบทบาท (ต้องเป็นพนักงาน หรือ admin)
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'employee') {
+if (!($IS_SUPER || $IS_ADMIN || $IS_EMP)) {
     echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์เข้าถึงหน้านี้</h2>";
+    exit;
+}
+if (($IS_ADMIN || $IS_EMP) && $COMPANY_ID <= 0) {
+    http_response_code(403);
+    echo "<h2 style='color:red;text-align:center;margin-top:50px;'>403 – ยังไม่ได้กำหนดบริษัทให้ผู้ใช้งานนี้</h2>";
     exit;
 }
 
 include 'db_connect.php';
 
-// Fetch venue types for dropdown
+function h($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+
+/* โหลดประเภทสนาม (คงเดิม) */
 $types = [];
 $typeSql = "SELECT VenueTypeID, TypeName FROM Tbl_Venue_Type ORDER BY TypeName ASC";
 if ($res = $conn->query($typeSql)) {
@@ -44,68 +46,84 @@ if ($res = $conn->query($typeSql)) {
     $res->free();
 }
 
-/* >>> ADD: ถ้าเป็น type_admin ให้เห็นเฉพาะประเภทสนามของตนเอง */
-if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
-    $types = array_values(array_filter($types, function($t) use ($TYPE_ADMIN_VTID) {
-        return (int)$t['VenueTypeID'] === $TYPE_ADMIN_VTID;
-    }));
-}
-// <<< END ADD
-
-// If editing
+/* ตรวจสอบโหมดแก้ไข */
 $editing = false;
 $editRow = null;
 if (isset($_GET['id']) && ctype_digit($_GET['id'])) {
-    $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ?");
-    $stmt->bind_param("i", $_GET['id']);
+    if ($IS_SUPER) {
+        // super_admin เห็นได้ทุกบริษัท
+        $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ?");
+        $stmt->bind_param("i", $_GET['id']);
+    } else {
+        // admin/employee แก้ไขได้เฉพาะสนามของบริษัทตน
+        $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ? AND CompanyID = ?");
+        $stmt->bind_param("ii", $_GET['id'], $COMPANY_ID);
+    }
     $stmt->execute();
     $editRow = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     if ($editRow) $editing = true;
-}
-
-/* >>> ADD: ถ้าเป็น type_admin ห้ามแก้ไขสนามข้ามประเภท */
-if ($editing && $IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
-    if ((int)$editRow['VenueTypeID'] !== $TYPE_ADMIN_VTID) {
-        echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์แก้ไขสนามนี้ (อนุญาตเฉพาะประเภท: "
-            . htmlspecialchars($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) . ")</h2>";
+    else {
+        echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ ไม่พบสนาม หรือคุณไม่มีสิทธิ์แก้ไขสนามนี้</h2>";
         exit;
     }
 }
-// <<< END ADD
 
-// Fetch all venues
+/* ค้นหารายการสนาม */
 $venues = [];
 $search = isset($_GET['q']) ? trim($_GET['q']) : '';
+
 if ($search !== '') {
-    $like = '%' . $search . '%';
-    $stmt = $conn->prepare("SELECT v.*, t.TypeName FROM Tbl_Venue v 
-        JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
-        WHERE v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?
-        ORDER BY v.VenueID DESC");
-    $stmt->bind_param("sss", $like, $like, $like);
+    $like = '%'.$search.'%';
+    if ($IS_SUPER) {
+        $stmt = $conn->prepare("
+            SELECT v.*, t.TypeName
+            FROM Tbl_Venue v 
+            JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
+            WHERE v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?
+            ORDER BY v.VenueID DESC
+        ");
+        $stmt->bind_param("sss", $like, $like, $like);
+    } else {
+        $stmt = $conn->prepare("
+            SELECT v.*, t.TypeName
+            FROM Tbl_Venue v 
+            JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
+            WHERE v.CompanyID = ?
+              AND (v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?)
+            ORDER BY v.VenueID DESC
+        ");
+        $stmt->bind_param("isss", $COMPANY_ID, $like, $like, $like);
+    }
     $stmt->execute();
     $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 } else {
-    $sql = "SELECT v.*, t.TypeName FROM Tbl_Venue v 
+    if ($IS_SUPER) {
+        $sql = "
+            SELECT v.*, t.TypeName
+            FROM Tbl_Venue v 
             JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
-            ORDER BY v.VenueID DESC";
-    if ($res = $conn->query($sql)) {
-        $venues = $res->fetch_all(MYSQLI_ASSOC);
-        $res->free();
+            ORDER BY v.VenueID DESC
+        ";
+        if ($res = $conn->query($sql)) {
+            $venues = $res->fetch_all(MYSQLI_ASSOC);
+            $res->free();
+        }
+    } else {
+        $stmt = $conn->prepare("
+            SELECT v.*, t.TypeName
+            FROM Tbl_Venue v 
+            JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
+            WHERE v.CompanyID = ?
+            ORDER BY v.VenueID DESC
+        ");
+        $stmt->bind_param("i", $COMPANY_ID);
+        $stmt->execute();
+        $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
     }
 }
-
-/* >>> ADD: จำกัดรายการสนามให้ตรงกับประเภทของ type_admin */
-if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
-    $venues = array_values(array_filter($venues, function($v) use ($TYPE_ADMIN_VTID) {
-        return (int)$v['VenueTypeID'] === $TYPE_ADMIN_VTID;
-    }));
-}
-// <<< END ADD
-
-function h($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -116,374 +134,95 @@ function h($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #2B27ECFF 100%);
-    min-height: 100vh;
-    padding: 0;
-}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #2B27ECFF 100%); min-height:100vh; padding:0; }
 
 /* Navbar Styles */
-.navbar-modern {
-    background: rgba(255, 255, 255, 0.98);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    padding: 1rem 0;
-    margin-bottom: 2rem;
-}
+.navbar-modern { background: rgba(255,255,255,.98); backdrop-filter: blur(10px); box-shadow:0 4px 20px rgba(0,0,0,.1); padding:1rem 0; margin-bottom:2rem; }
+.navbar-brand-modern { font-size:1.5rem; font-weight:700; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin:0; }
 
-.navbar-brand-modern {
-    font-size: 1.5rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin: 0;
-}
-
-.container-main {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 1rem 2rem;
-}
+.container-main { max-width:1400px; margin:0 auto; padding:0 1rem 2rem; }
 
 /* Alert Styles */
-.alert-modern {
-    border: none;
-    border-radius: 15px;
-    padding: 1rem 1.5rem;
-    margin-bottom: 1.5rem;
-    animation: slideDown 0.3s ease-out;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-
-@keyframes slideDown {
-    from { transform: translateY(-20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
+.alert-modern { border:none; border-radius:15px; padding:1rem 1.5rem; margin-bottom:1.5rem; animation:slideDown .3s ease-out; box-shadow:0 4px 15px rgba(0,0,0,.1); }
+@keyframes slideDown { from{transform:translateY(-20px);opacity:0;} to{transform:translateY(0);opacity:1;} }
 
 /* Search Card */
-.search-card {
-    background: white;
-    border-radius: 20px;
-    padding: 2rem;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-    margin-bottom: 2rem;
-}
-
-.search-input {
-    border: 2px solid #e0e7ff;
-    border-radius: 12px;
-    padding: 0.8rem 1.2rem;
-    transition: all 0.3s ease;
-}
-
-.search-input:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
-    outline: none;
-}
+.search-card { background:#fff; border-radius:20px; padding:2rem; box-shadow:0 10px 40px rgba(0,0,0,.1); margin-bottom:2rem; }
+.search-input { border:2px solid #e0e7ff; border-radius:12px; padding:.8rem 1.2rem; transition:.3s; }
+.search-input:focus { border-color:#667eea; box-shadow:0 0 0 4px rgba(102,126,234,.1); outline:none; }
 
 /* Button Styles */
-.btn-modern {
-    border: none;
-    border-radius: 12px;
-    padding: 0.8rem 2rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.btn-primary-modern {
-    background: linear-gradient(135deg, #667eea 0%, #514BA2FF 100%);
-    color: white;
-}
-
-.btn-primary-modern:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
-    color: white;
-}
-
-.btn-outline-modern {
-    background: white;
-    color: #667eea;
-    border: 2px solid #667eea;
-}
-
-.btn-outline-modern:hover {
-    background: #667eea;
-    color: white;
-    transform: translateY(-2px);
-}
+.btn-modern { border:none; border-radius:12px; padding:.8rem 2rem; font-weight:600; transition:.3s; }
+.btn-primary-modern { background:linear-gradient(135deg,#667eea 0%,#514BA2FF 100%); color:#fff; }
+.btn-primary-modern:hover { transform:translateY(-2px); box-shadow:0 10px 25px rgba(102,126,234,.4); color:#fff; }
+.btn-outline-modern { background:#fff; color:#667eea; border:2px solid #667eea; }
+.btn-outline-modern:hover { background:#667eea; color:#fff; transform:translateY(-2px); }
 
 /* Card Styles */
-.card-modern {
-    background: white;
-    border: none;
-    border-radius: 20px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    transition: all 0.3s ease;
-    margin-bottom: 2rem;
-}
-
-.card-modern:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
-}
-
-.card-header-modern {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 1.5rem;
-    font-size: 1.2rem;
-    font-weight: 700;
-    border: none;
-}
-
-.card-body-modern {
-    padding: 2rem;
-}
+.card-modern { background:#fff; border:none; border-radius:20px; box-shadow:0 10px 40px rgba(0,0,0,.1); overflow:hidden; transition:.3s; margin-bottom:2rem; animation: fadeIn .5s ease-out; }
+.card-modern:hover { transform:translateY(-5px); box-shadow:0 15px 50px rgba(0,0,0,.15); }
+.card-header-modern { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; padding:1.5rem; font-size:1.2rem; font-weight:700; border:none; }
+.card-body-modern { padding:2rem; }
 
 /* Form Styles */
-.form-label-modern {
-    font-weight: 600;
-    color: #4a5568;
-    margin-bottom: 0.5rem;
-    display: block;
-}
-
-.form-control-modern,
-.form-select-modern {
-    border: 2px solid #e0e7ff;
-    border-radius: 10px;
-    padding: 0.7rem 1rem;
-    transition: all 0.3s ease;
-    width: 100%;
-}
-
-.form-control-modern:focus,
-.form-select-modern:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
-    outline: none;
-}
-
-textarea.form-control-modern {
-    resize: vertical;
-}
+.form-label-modern { font-weight:600; color:#4a5568; margin-bottom:.5rem; display:block; }
+.form-control-modern, .form-select-modern { border:2px solid #e0e7ff; border-radius:10px; padding:.7rem 1rem; transition:.3s; width:100%; }
+.form-control-modern:focus, .form-select-modern:focus { border-color:#667eea; box-shadow:0 0 0 4px rgba(102,126,234,.1); outline:none; }
+textarea.form-control-modern { resize:vertical; }
 
 /* Table Styles */
-.table-modern {
-    background: white;
-    margin: 0;
-}
-
-.table-modern thead {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.table-modern thead th {
-    border: none;
-    padding: 1rem;
-    font-weight: 600;
-    vertical-align: middle;
-}
-
-.table-modern tbody tr {
-    transition: all 0.3s ease;
-    border-bottom: 1px solid #f0f4ff;
-}
-
-.table-modern tbody tr:hover {
-    background: #f8faff;
-}
-
-.table-modern tbody td {
-    padding: 1rem;
-    vertical-align: middle;
-}
+.table-modern { background:#fff; margin:0; }
+.table-modern thead { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; }
+.table-modern thead th { border:none; padding:1rem; font-weight:600; vertical-align:middle; }
+.table-modern tbody tr { transition:.3s; border-bottom:1px solid #f0f4ff; }
+.table-modern tbody tr:hover { background:#f8faff; }
+.table-modern tbody td { padding:1rem; vertical-align:middle; }
 
 /* Image Thumbnail */
-.thumb {
-    width: 80px;
-    height: 60px;
-    object-fit: cover;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-.thumb:hover {
-    transform: scale(1.1);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-}
+.thumb { width:80px; height:60px; object-fit:cover; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,.1); transition:.3s; cursor:pointer; }
+.thumb:hover { transform:scale(1.1); box-shadow:0 8px 25px rgba(0,0,0,.2); }
 
 /* Badge Styles */
-.badge-modern {
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    display: inline-block;
-}
-
-.badge-success-modern {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    color: white;
-}
-
-.badge-warning-modern {
-    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-    color: white;
-}
-
-.badge-secondary-modern {
-    background: linear-gradient(135deg, #718096 0%, #4a5568 100%);
-    color: white;
-}
+.badge-modern { padding:.5rem 1rem; border-radius:20px; font-weight:600; font-size:.85rem; display:inline-block; }
+.badge-success-modern { background:linear-gradient(135deg,#48bb78 0%,#38a169 100%); color:#fff; }
+.badge-warning-modern { background:linear-gradient(135deg,#ed8936 0%,#dd6b20 100%); color:#fff; }
+.badge-secondary-modern { background:linear-gradient(135deg,#718096 0%,#4a5568 100%); color:#fff; }
 
 /* Action Buttons */
-.btn-action {
-    padding: 0.4rem 1rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    margin: 0.2rem;
-    border: none;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    display: inline-block;
-}
-
-.btn-edit {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.btn-edit:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-    color: white;
-}
-
-.btn-status-warning {
-    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-    color: white;
-}
-
-.btn-status-warning:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(237, 137, 54, 0.4);
-    color: white;
-}
-
-.btn-status-success {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    color: white;
-}
-
-.btn-status-success:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
-    color: white;
-}
-
-.btn-delete {
-    background: white;
-    color: #f56565;
-    border: 2px solid #f56565;
-}
-
-.btn-delete:hover {
-    background: #f56565;
-    color: white;
-    transform: translateY(-2px);
-}
+.btn-action { padding:.4rem 1rem; border-radius:8px; font-size:.85rem; margin:.2rem; border:none; font-weight:600; transition:.3s; display:inline-block; }
+.btn-edit { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; }
+.btn-edit:hover { transform:translateY(-2px); box-shadow:0 5px 15px rgba(102,126,234,.4); color:#fff; }
+.btn-status-warning { background:linear-gradient(135deg,#ed8936 0%,#dd6b20 100%); color:#fff; }
+.btn-status-warning:hover { transform:translateY(-2px); box-shadow:0 5px 15px rgba(237,137,54,.4); color:#fff; }
+.btn-status-success { background:linear-gradient(135deg,#48bb78 0%,#38a169 100%); color:#fff; }
+.btn-status-success:hover { transform:translateY(-2px); box-shadow:0 5px 15px rgba(72,187,120,.4); color:#fff; }
+.btn-delete { background:#fff; color:#f56565; border:2px solid #f56565; }
+.btn-delete:hover { background:#f56565; color:#fff; transform:translateY(-2px); }
 
 /* Submit Button */
-.btn-submit {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    padding: 0.8rem 2rem;
-    font-weight: 700;
-    width: 100%;
-    transition: all 0.3s ease;
-    font-size: 1rem;
-}
-
-.btn-submit:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(72, 187, 120, 0.4);
-    color: white;
-}
+.btn-submit { background:linear-gradient(135deg,#48bb78 0%,#38a169 100%); color:#fff; border:none; border-radius:12px; padding:.8rem 2rem; font-weight:700; width:100%; transition:.3s; font-size:1rem; }
+.btn-submit:hover { transform:translateY(-2px); box-shadow:0 10px 25px rgba(72,187,120,.4); color:#fff; }
 
 /* Empty State */
-.empty-state {
-    padding: 3rem;
-    text-align: center;
-    color: #a0aec0;
-}
+.empty-state { padding:3rem; text-align:center; color:#a0aec0; }
 
 /* Form Text */
-.form-text-modern {
-    font-size: 0.875rem;
-    color: #718096;
-    margin-top: 0.25rem;
-}
+.form-text-modern { font-size:.875rem; color:#718096; margin-top:.25rem; }
 
 /* Responsive */
 @media (max-width: 768px) {
-    .navbar-modern {
-        padding: 0.75rem 0;
-    }
-    
-    .navbar-brand-modern {
-        font-size: 1.2rem;
-    }
-    
-    .search-card {
-        padding: 1.5rem;
-    }
-    
-    .card-body-modern {
-        padding: 1.5rem;
-    }
-    
-    .btn-action {
-        padding: 0.3rem 0.7rem;
-        font-size: 0.75rem;
-        margin: 0.1rem;
-    }
-    
-    .table-modern {
-        font-size: 0.85rem;
-    }
-    
-    .table-modern thead th,
-    .table-modern tbody td {
-        padding: 0.75rem 0.5rem;
-    }
+  .navbar-modern { padding:.75rem 0; }
+  .navbar-brand-modern { font-size:1.2rem; }
+  .search-card { padding:1.5rem; }
+  .card-body-modern { padding:1.5rem; }
+  .btn-action { padding:.3rem .7rem; font-size:.75rem; margin:.1rem; }
+  .table-modern { font-size:.85rem; }
+  .table-modern thead th, .table-modern tbody td { padding:.75rem .5rem; }
 }
 
 /* Animation */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.card-modern {
-    animation: fadeIn 0.5s ease-out;
-}
+@keyframes fadeIn { from{opacity:0; transform:translateY(20px);} to{opacity:1; transform:translateY(0);} }
 </style>
 </head>
 <body>
@@ -502,17 +241,16 @@ textarea.form-control-modern {
     </div>
 </div>
 
-<!-- >>> ADD: แถบแจ้งเตือนโหมด Type Admin -->
-<?php if ($IS_TYPE_ADMIN): ?>
+<?php if (!$IS_SUPER): ?>
+<!-- แถบแจ้งเตือนโหมดบริษัท -->
 <div class="container-main">
   <div class="alert alert-info alert-modern" role="alert" style="background:#e0f2fe;color:#075985;">
-    <i class="fas fa-shield-alt me-2"></i>
-    โหมด <strong>Type Admin</strong> — จัดการได้เฉพาะประเภทสนาม:
-    <strong><?= h($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) ?></strong>
+    <i class="fas fa-building me-2"></i>
+    โหมดบริษัท — คุณกำลังจัดการข้อมูลของบริษัท:
+    <strong><?= h($_SESSION['company_name'] ?? ('#'.$COMPANY_ID)) ?></strong>
   </div>
 </div>
 <?php endif; ?>
-<!-- <<< END ADD -->
 
 <div class="container-main">
     <!-- Flash messages -->
@@ -572,25 +310,14 @@ textarea.form-control-modern {
                         
                         <div class="mb-3">
                             <label class="form-label-modern">ประเภทสนาม</label>
-                            <select name="VenueTypeID" class="form-select form-select-modern" required <?= $IS_TYPE_ADMIN ? 'disabled' : '' ?>>
+                            <select name="VenueTypeID" class="form-select form-select-modern" required>
                                 <option value="">-- เลือกประเภท --</option>
                                 <?php foreach ($types as $t): ?>
-                                    <option value="<?= (int)$t['VenueTypeID'] ?>" <?= ($editing && $editRow['VenueTypeID']==$t['VenueTypeID'])?'selected':'' ?>>
+                                    <option value="<?= (int)$t['VenueTypeID'] ?>" <?= ($editing && (int)$editRow['VenueTypeID']===(int)$t['VenueTypeID'])?'selected':'' ?>>
                                         <?= h($t['TypeName']) ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
-                            <!-- >>> ADD: บังคับส่งค่าและล็อกให้เลือกได้เฉพาะประเภทของตน -->
-                            <?php if ($IS_TYPE_ADMIN): ?>
-                                <input type="hidden" name="VenueTypeID" value="<?= (int)$TYPE_ADMIN_VTID ?>">
-                            <?php endif; ?>
-                            <!-- <<< END ADD -->
-
-                            <!-- >>> ADD: ถ้าเป็น type_admin ให้เตือนว่าถูกจำกัดประเภท -->
-                            <?php if ($IS_TYPE_ADMIN): ?>
-                              <small class="form-text-modern"><i class="fas fa-info-circle me-1"></i>คุณถูกจำกัดให้เลือกเฉพาะประเภท: <strong><?= h($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) ?></strong></small>
-                            <?php endif; ?>
-                            <!-- <<< END ADD -->
                         </div>
                         
                         <div class="row">
@@ -743,11 +470,3 @@ textarea.form-control-modern {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
-<?php
-/* >>> ADD: คืนค่า role เดิม ถ้าเคยสวมบท employee ชั่วคราว */
-if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
-    $_SESSION['role'] = 'type_admin';
-    unset($_SESSION['role_backup_for_type_admin']);
-}
-/* <<< END ADD */
