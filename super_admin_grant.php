@@ -252,136 +252,172 @@ usort($users, function($a,$b){
 <title>มอบสิทธิ์ผู้ดูแลระบบสูงสุด / admin รายบริษัท</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body{font-family:'Sarabun',sans-serif;background:#f6f7fb;margin:0;padding:24px;color:#0f172a}
-h1{margin:0 0 10px} .sub{color:#64748b;margin:0 0 16px}
-.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.05);padding:16px;margin-bottom:16px}
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left;vertical-align:top}
+:root{
+  --bg:#f6f7fb;--text:#0f172a;--muted:#64748b;--card:#fff;--line:#e5e7eb;
+  --primary:#2563eb;--primary-600:#1d4ed8;--success:#10b981;--warn:#ef4444;--amber:#f59e0b;
+}
+*{box-sizing:border-box} body{font-family:'Sarabun',sans-serif;background:var(--bg);margin:0;color:var(--text)}
+.container{max-width:1200px;margin:88px auto 32px;padding:0 20px}
+.topbar{
+  position:fixed;top:0;left:0;right:0;background:#fff;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 16px;z-index:20
+}
+.topbar-left{display:flex;align-items:center;gap:10px}
+.breadcrumb{font-weight:700}
+.breadcrumb a{color:var(--primary);text-decoration:none}
+.back-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);padding:8px 12px;border-radius:10px;background:#fff;cursor:pointer;text-decoration:none;color:var(--text)}
+.back-btn:hover{border-color:var(--primary);transform:translateY(-1px)}
+.action-row{display:flex;gap:8px}
+.icon{font-size:18px}
+h1{margin:0 0 6px}
+.sub{color:var(--muted);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.05);padding:16px;margin-bottom:16px}
+.table{width:100%;border-collapse:separate;border-spacing:0}
+.table thead th{position:sticky;top:0;background:#fafafa;border-bottom:1px solid var(--line);z-index:1}
+.table th,.table td{padding:12px 14px;border-bottom:1px solid #eef2f7;text-align:left;vertical-align:top}
+.table tbody tr:nth-child(odd){background:#fbfdff}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.85rem;font-weight:700}
-.badge.sa{background:#1d4ed8;color:#fff}
-.badge.emp{background:#10b981;color:#064e3b}
+.badge.sa{background:var(--primary-600);color:#fff}
+.badge.emp{background:var(--success);color:#064e3b}
 .badge.cus{background:#e5e7eb;color:#374151}
-.badge.co{background:#f59e0b;color:#7c2d12}
+.badge.co{background:var(--amber);color:#7c2d12}
 .type{display:inline-block;padding:2px 8px;border-radius:8px;font-size:.82rem;margin-right:6px}
 .type-emp{background:#d1fae5;color:#065f46}
 .type-cus{background:#e5e7eb;color:#374151}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
-.btn{border:none;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
-.btn.sa{background:#1d4ed8;color:#fff}
-.btn.emp{background:#10b981;color:#fff}
-.btn.warn{background:#ef4444;color:#fff}
-.select,.inline-input{padding:6px 8px;border:1px solid #e5e7eb;border-radius:8px}
-.msg{margin:12px 0 16px;padding:10px 12px;border-radius:10px;border:1px solid #e5e7eb;background:#f8fafc}
-.search{margin:10px 0 16px} .search input{width:260px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px}
-.small{color:#64748b}
+.btn{border:none;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer}
+.btn.sa{background:var(--primary);color:#fff}
+.btn.emp{background:var(--success);color:#fff}
+.btn.warn{background:var(--warn);color:#fff}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--text)}
+.select,.inline-input{padding:7px 9px;border:1px solid var(--line);border-radius:8px}
+.msg{margin:12px 0 16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#f8fafc}
+.search{margin:10px 0 16px} .search input{width:280px;padding:9px 10px;border:1px solid var(--line);border-radius:8px}
+.small{color:var(--muted)}
+.toast{
+  position:fixed;right:16px;bottom:16px;background:#0ea5e9;color:#fff;padding:12px 14px;
+  border-radius:12px;box-shadow:0 8px 22px rgba(0,0,0,.15);z-index:30;display:none
+}
 </style>
 </head>
 <body>
-  <h1>มอบสิทธิ์ผู้ดูแลระบบ &nbsp;|&nbsp; ตั้งลูกค้าเป็น <u>admin</u> รายบริษัท</h1>
-  <p class="sub">พนักงานใช้ปุ่มด้านขวาเพื่อสลับสิทธิ์ ส่วนลูกค้าพิมพ์ “ชื่อบริษัท” แล้วบันทึก ระบบจะสร้าง/ใช้บริษัทให้อัตโนมัติ</p>
-
-  <?php if ($message): ?>
-    <div class="msg"><?= h($message) ?></div>
-  <?php endif; ?>
-
-  <!-- กล่องเพิ่มบริษัทใหม่ (ทางเลือก) -->
-  <div class="card">
-    <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input type="hidden" name="create_company" value="1">
-      <strong>เพิ่มบริษัทใหม่ (ตัวเลือกเสริม):</strong>
-      <input type="text" name="new_company_name" class="inline-input" placeholder="พิมพ์ชื่อบริษัท...">
-      <button class="btn emp" type="submit">เพิ่มบริษัท</button>
-      <span class="small">* ถ้าไม่เพิ่มจากตรงนี้ ก็พิมพ์ชื่อบริษัทในแถวลูกค้าได้เลย</span>
-    </form>
+  <!-- Topbar + Breadcrumb + Back -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <a href="dashboard.php" class="back-btn" title="กลับสู่หน้า Dashboard">⬅️ <span>กลับ Dashboard</span></a>
+      <div class="breadcrumb">มอบสิทธิ์ผู้ดูแลระบบ ▸ <span style="color:var(--primary)">ตั้งลูกค้าเป็น admin รายบริษัท</span></div>
+    </div>
+    <div class="action-row">
+      <a class="back-btn" href="javascript:location.reload()"><span class="icon">🔄</span>รีเฟรช</a>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="search">🔎 ค้นหา: <input type="text" id="q" placeholder="พิมพ์ชื่อหรือ username"></div>
-    <table class="table" id="tbl">
-      <thead>
-        <tr>
-          <th style="width:70px">ID</th>
-          <th style="width:120px">ประเภทผู้ใช้</th>
-          <th>ชื่อ (FirstName)</th>
-          <th>Username</th>
-          <th>สิทธิ์/สถานะปัจจุบัน</th>
-          <th style="width:520px">จัดการ</th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php if (!$users): ?>
-        <tr><td colspan="6">ยังไม่มีผู้ใช้ในระบบ</td></tr>
-      <?php else: foreach ($users as $u): ?>
-        <tr>
-          <td><?= (int)$u['id'] ?></td>
-          <td>
-            <?php if ($u['kind']==='employee'): ?>
-              <span class="type type-emp">employee</span>
-            <?php else: ?>
-              <span class="type type-cus">customer</span>
-            <?php endif; ?>
-          </td>
-          <td><?= h($u['FirstName'] ?: '-') ?></td>
-          <td><?= h($u['Username'] ?: '-') ?></td>
-          <td>
-            <?php if ($u['kind']==='employee'): ?>
-              <?php if (($u['role_name'] ?? 'employee') === 'super_admin'): ?>
-                <span class="badge sa">super_admin</span>
-              <?php else: ?>
-                <span class="badge emp">employee</span>
-              <?php endif; ?>
-            <?php else: /* customer */ ?>
-              <?php if (!empty($u['CompanyRole'])): ?>
-                <span class="badge co"><?= h($u['CompanyRole']) ?> @ <?= h($u['CompanyName']) ?></span>
-              <?php else: ?>
-                <span class="badge cus">ลูกค้าทั่วไป</span>
-              <?php endif; ?>
-            <?php endif; ?>
-          </td>
-          <td class="actions">
-            <?php if ($u['kind']==='employee'): ?>
-              <form method="post" style="display:inline">
-                <input type="hidden" name="employee_id" value="<?= (int)$u['id'] ?>">
-                <input type="hidden" name="role_name" value="super_admin">
-                <button class="btn sa" type="submit">ตั้งเป็น super_admin</button>
-              </form>
-              <form method="post" style="display:inline">
-                <input type="hidden" name="employee_id" value="<?= (int)$u['id'] ?>">
-                <input type="hidden" name="role_name" value="employee">
-                <button class="btn emp" type="submit">ตั้งเป็น employee</button>
-              </form>
-            <?php else: /* customer: แต่งตั้ง admin รายบริษัท ด้วยการ "พิมพ์ชื่อบริษัท" เท่านั้น */ ?>
-              <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="hidden" name="company_admin_action" value="assign">
-                <input type="hidden" name="customer_id" value="<?= (int)$u['id'] ?>">
+  <div class="container">
+    <h1>มอบสิทธิ์ผู้ดูแลระบบ &nbsp;|&nbsp; ตั้งลูกค้าเป็น <u>admin</u> รายบริษัท</h1>
+    <p class="sub">พนักงานใช้ปุ่มด้านขวาเพื่อสลับสิทธิ์ ส่วนลูกค้าพิมพ์ “ชื่อบริษัท” แล้วบันทึก ระบบจะสร้าง/ใช้บริษัทให้อัตโนมัติ</p>
 
-                <!-- พิมพ์ชื่อบริษัท (บังคับ) -->
-                <input type="text" name="company_name_typed" class="inline-input" placeholder="พิมพ์ชื่อบริษัท..." required>
+    <?php if ($message): ?>
+      <div class="msg"><?= h($message) ?></div>
+      <div class="toast" id="toast"><?= h($message) ?></div>
+    <?php endif; ?>
 
-                <!-- บทบาทบังคับเป็น admin -->
-                <input type="hidden" name="company_role" value="admin">
+    <!-- กล่องเพิ่มบริษัทใหม่ (ทางเลือก) -->
+    <div class="card">
+      <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="hidden" name="create_company" value="1">
+        <strong>เพิ่มบริษัทใหม่ (ตัวเลือกเสริม):</strong>
+        <input type="text" name="new_company_name" class="inline-input" placeholder="พิมพ์ชื่อบริษัท...">
+        <button class="btn emp" type="submit">เพิ่มบริษัท</button>
+        <span class="small">* ถ้าไม่เพิ่มจากตรงนี้ ก็พิมพ์ชื่อบริษัทในแถวลูกค้าได้เลย</span>
+      </form>
+    </div>
 
-                <button class="btn emp" type="submit">บันทึกสิทธิ์ (admin)</button>
-              </form>
+    <div class="card">
+      <div class="search">🔎 ค้นหา: <input type="text" id="q" placeholder="พิมพ์ชื่อหรือ username"></div>
+      <div style="overflow:auto;border:1px solid var(--line);border-radius:12px">
+        <table class="table" id="tbl">
+          <thead>
+            <tr>
+              <th style="width:70px">ID</th>
+              <th style="width:120px">ประเภทผู้ใช้</th>
+              <th>ชื่อ (FirstName)</th>
+              <th>Username</th>
+              <th>สิทธิ์/สถานะปัจจุบัน</th>
+              <th style="width:560px">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php if (!$users): ?>
+            <tr><td colspan="6">ยังไม่มีผู้ใช้ในระบบ</td></tr>
+          <?php else: foreach ($users as $u): ?>
+            <tr>
+              <td><?= (int)$u['id'] ?></td>
+              <td>
+                <?php if ($u['kind']==='employee'): ?>
+                  <span class="type type-emp">employee</span>
+                <?php else: ?>
+                  <span class="type type-cus">customer</span>
+                <?php endif; ?>
+              </td>
+              <td><?= h($u['FirstName'] ?: '-') ?></td>
+              <td><?= h($u['Username'] ?: '-') ?></td>
+              <td>
+                <?php if ($u['kind']==='employee'): ?>
+                  <?php if (($u['role_name'] ?? 'employee') === 'super_admin'): ?>
+                    <span class="badge sa">super_admin</span>
+                  <?php else: ?>
+                    <span class="badge emp">employee</span>
+                  <?php endif; ?>
+                <?php else: /* customer */ ?>
+                  <?php if (!empty($u['CompanyRole'])): ?>
+                    <span class="badge co"><?= h($u['CompanyRole']) ?> @ <?= h($u['CompanyName']) ?></span>
+                  <?php else: ?>
+                    <span class="badge cus">ลูกค้าทั่วไป</span>
+                  <?php endif; ?>
+                <?php endif; ?>
+              </td>
+              <td class="actions">
+                <?php if ($u['kind']==='employee'): ?>
+                  <form method="post" style="display:inline">
+                    <input type="hidden" name="employee_id" value="<?= (int)$u['id'] ?>">
+                    <input type="hidden" name="role_name" value="super_admin">
+                    <button class="btn sa" type="submit">ตั้งเป็น super_admin</button>
+                  </form>
+                  <form method="post" style="display:inline">
+                    <input type="hidden" name="employee_id" value="<?= (int)$u['id'] ?>">
+                    <input type="hidden" name="role_name" value="employee">
+                    <button class="btn emp" type="submit">ตั้งเป็น employee</button>
+                  </form>
+                <?php else: /* customer: แต่งตั้ง admin รายบริษัท ด้วยการ "พิมพ์ชื่อบริษัท" เท่านั้น */ ?>
+                  <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <input type="hidden" name="company_admin_action" value="assign">
+                    <input type="hidden" name="customer_id" value="<?= (int)$u['id'] ?>">
+                    <input type="text" name="company_name_typed" class="inline-input" placeholder="พิมพ์ชื่อบริษัท..." required>
+                    <input type="hidden" name="company_role" value="admin">
+                    <button class="btn emp" type="submit">บันทึกสิทธิ์ (admin)</button>
+                  </form>
 
-              <?php if (!empty($u['CompanyRole'])): ?>
-                <form method="post" style="display:inline">
-                  <input type="hidden" name="company_admin_action" value="revoke">
-                  <input type="hidden" name="customer_id" value="<?= (int)$u['id'] ?>">
-                  <button class="btn warn" type="submit">ยกเลิกสิทธิ์</button>
-                </form>
-              <?php endif; ?>
+                  <?php if (!empty($u['CompanyRole'])): ?>
+                    <form method="post" style="display:inline">
+                      <input type="hidden" name="company_admin_action" value="revoke">
+                      <input type="hidden" name="customer_id" value="<?= (int)$u['id'] ?>">
+                      <button class="btn warn" type="submit">ยกเลิกสิทธิ์</button>
+                    </form>
+                  <?php endif; ?>
 
-              <div class="small">* ระบบจะสร้างบริษัทใหม่ให้อัตโนมัติหากยังไม่มีชื่อที่พิมพ์ไว้</div>
-            <?php endif; ?>
-          </td>
-        </tr>
-      <?php endforeach; endif; ?>
-      </tbody>
-    </table>
+                  <div class="small">* ระบบจะสร้างบริษัทใหม่ให้อัตโนมัติหากยังไม่มีชื่อที่พิมพ์ไว้</div>
+                <?php endif; ?>
+              </td>
+            </tr>
+          <?php endforeach; endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
 <script>
+// ค้นหาแถว
 const q = document.getElementById('q');
 const tb = document.getElementById('tbl')?.querySelector('tbody');
 if (q && tb) {
@@ -391,6 +427,14 @@ if (q && tb) {
       tr.style.display = tr.innerText.toLowerCase().includes(t) ? '' : 'none';
     }
   });
+}
+
+// Toast แสดงผลลัพธ์ แล้วค่อยๆหาย
+const toast = document.getElementById('toast');
+if (toast) {
+  toast.style.display = 'block';
+  setTimeout(()=>{ toast.style.opacity = '0'; toast.style.transition='opacity .6s'; }, 2200);
+  setTimeout(()=>{ toast.remove(); }, 3000);
 }
 </script>
 </body>
