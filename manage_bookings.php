@@ -6,42 +6,44 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 
-/* >>> ADD: รองรับ type_admin */
-$IS_TYPE_ADMIN   = false;
-$TYPE_ADMIN_VTID = 0;
-$TYPE_ADMIN_NAME = '';
-
-if (isset($_SESSION['role']) && $_SESSION['role'] === 'type_admin') {
-    $IS_TYPE_ADMIN   = true;
-    $TYPE_ADMIN_VTID = (int)($_SESSION['type_admin_venue_type_id'] ?? 0);
-    $TYPE_ADMIN_NAME = (string)($_SESSION['type_admin_type_name'] ?? '');
-    $_SESSION['role_backup_for_type_admin'] = 'type_admin';
-    $_SESSION['role'] = 'employee';
-}
-
-// ✅ ตรวจสอบสิทธิ์พนักงาน
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'employee') {
-    if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
-        $_SESSION['role'] = 'type_admin';
-        unset($_SESSION['role_backup_for_type_admin']);
-    }
+/* =========[ AUTH: อนุญาต employee, admin, super_admin, type_admin ]========= */
+if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
 }
 
-include 'db_connect.php';
-
-$employee_id = $_SESSION['user_id'];
-$userName = $_SESSION['user_name'] ?? 'พนักงาน';
-
-// Avatar logic
-$avatarPath = $_SESSION['avatar_path'] ?? '';
-$avatarLocal = 'assets/avatar-default.png';
-
-function _exists_rel($rel) {
-    return is_file(__DIR__ . '/' . ltrim($rel, '/'));
+$ROLE = (string)($_SESSION['role'] ?? '');
+$ALLOWED = ['employee','admin','super_admin','type_admin'];
+if (!in_array($ROLE, $ALLOWED, true)) {
+    header("Location: login.php");
+    exit;
 }
 
+/* >>> FLAGS */
+$IS_SUPER       = ($ROLE === 'super_admin');
+$IS_ADMIN       = ($ROLE === 'admin');
+$IS_EMPLOYEE    = ($ROLE === 'employee');
+$IS_TYPE_ADMIN  = ($ROLE === 'type_admin');
+
+/* >>> TYPE-ADMIN SCOPE (ไม่แก้ role ใน session แล้ว) */
+$TYPE_ADMIN_VTID = (int)($_SESSION['type_admin_venue_type_id'] ?? 0);
+$TYPE_ADMIN_NAME = (string)($_SESSION['type_admin_type_name'] ?? '');
+
+/* NOTE:
+   เดิมโค้ดเปลี่ยน $_SESSION['role'] ไปเป็น employee แล้วค่อยเปลี่ยนกลับ ทำให้หลุดสิทธิ์และเด้ง login
+   เวอร์ชันนี้เลิกเปลี่ยน role ใน session แต่ยังบังคับขอบเขตด้วย $IS_TYPE_ADMIN + _type_admin_can_manage() เช่นเดิม
+*/
+
+/* DB */
+include_once 'db_connect.php';
+
+$employee_id = (int)$_SESSION['user_id'];
+$userName    = $_SESSION['user_name'] ?? 'พนักงาน';
+
+/* Avatar */
+$avatarPath = $_SESSION['avatar_path'] ?? '';
+$avatarLocal = 'assets/avatar-default.png';
+function _exists_rel($rel){ return is_file(__DIR__ . '/' . ltrim($rel, '/')); }
 if ($avatarPath && _exists_rel($avatarPath)) {
     $avatarSrc = $avatarPath;
 } elseif (_exists_rel($avatarLocal)) {
@@ -52,8 +54,9 @@ if ($avatarPath && _exists_rel($avatarPath)) {
     );
 }
 
-/* >>> ADD: util functions */
+/* Utils */
 function _restore_type_admin_role_before_redirect(): void {
+    // เวอร์ชันนี้เราไม่เปลี่ยน role แล้ว ฟังก์ชันนี้เลยไม่มีงาน แต่คงไว้เพื่อไม่แตะส่วนอื่น
     if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
         $_SESSION['role'] = 'type_admin';
         unset($_SESSION['role_backup_for_type_admin']);
@@ -70,7 +73,10 @@ function _trigger_confirmation_email(int $booking_id): void {
 
 function _type_admin_can_manage(mysqli $conn, int $booking_id, int $vtid): bool {
     if ($vtid <= 0) return false;
-    $q = "SELECT 1 FROM Tbl_Booking b JOIN Tbl_Venue v ON v.VenueID = b.VenueID WHERE b.BookingID = ? AND v.VenueTypeID = ?";
+    $q = "SELECT 1
+          FROM Tbl_Booking b
+          JOIN Tbl_Venue v ON v.VenueID = b.VenueID
+          WHERE b.BookingID = ? AND v.VenueTypeID = ?";
     if (!$st = $conn->prepare($q)) return false;
     $st->bind_param("ii", $booking_id, $vtid);
     $st->execute();
@@ -80,7 +86,7 @@ function _type_admin_can_manage(mysqli $conn, int $booking_id, int $vtid): bool 
     return $ok;
 }
 
-/* >>> ADD: รองรับปุ่มลัด */
+/* >>> ปุ่มลัดผ่าน GET */
 if ((isset($_GET['quick']) || isset($_GET['action']) || isset($_GET['pay'])) && isset($_GET['id']) && ctype_digit((string)$_GET['id'])) {
     $op  = $_GET['quick'] ?? ($_GET['action'] ?? (($_GET['pay'] ?? '')));
     $bid = (int)$_GET['id'];
@@ -113,9 +119,7 @@ if ((isset($_GET['quick']) || isset($_GET['action']) || isset($_GET['pay'])) && 
             $st->execute();
             $st->close();
             $_SESSION['success_message'] = "$msg (#{$bid})";
-            if ($op === 'confirm') {
-                _trigger_confirmation_email($bid);
-            }
+            if ($op === 'confirm') _trigger_confirmation_email($bid);
         } else {
             $_SESSION['error_message'] = "❌ ไม่สามารถเตรียมคำสั่งได้";
         }
@@ -125,9 +129,9 @@ if ((isset($_GET['quick']) || isset($_GET['action']) || isset($_GET['pay'])) && 
     }
 }
 
-// ✅ จัดการการอัปเดตสถานะ
+/* >>> อัปเดตสถานะ (POST) */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
-    $booking_id = intval($_POST['booking_id']);
+    $booking_id     = intval($_POST['booking_id']);
     $booking_status = intval($_POST['booking_status']);
     $payment_status = intval($_POST['payment_status']);
 
@@ -143,9 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
             $stmt->bind_param("iii", $booking_status, $payment_status, $booking_id);
             if ($stmt->execute()) {
                 $_SESSION['success_message'] = "✅ อัปเดตสถานะเรียบร้อยแล้ว! (Booking #$booking_id)";
-                if ($booking_status == 2) {
-                    _trigger_confirmation_email($booking_id);
-                }
+                if ($booking_status == 2) _trigger_confirmation_email($booking_id);
             } else {
                 $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดต: " . $stmt->error;
             }
@@ -161,12 +163,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $update_sql = "UPDATE Tbl_Booking SET BookingStatusID = ?, PaymentStatusID = ?, EmployeeID = ? WHERE BookingID = ?";
     $stmt = $conn->prepare($update_sql);
     $stmt->bind_param("iiii", $booking_status, $payment_status, $employee_id, $booking_id);
-    
     if ($stmt->execute()) {
         $_SESSION['success_message'] = "✅ อัปเดตสถานะเรียบร้อยแล้ว! (Booking #$booking_id)";
-        if ($booking_status == 2) {
-            _trigger_confirmation_email($booking_id);
-        }
+        if ($booking_status == 2) _trigger_confirmation_email($booking_id);
     } else {
         $_SESSION['error_message'] = "❌ เกิดข้อผิดพลาดในการอัปเดต: " . $stmt->error;
     }
@@ -176,17 +175,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     exit;
 }
 
-// ✅ จัดการการยกเลิกการจอง
+/* >>> ยกเลิก */
 if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
     $cancel_id = intval($_GET['cancel']);
-
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $cancel_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ยกเลิกการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
         _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
         exit;
     }
-
     $conn->query("UPDATE Tbl_Booking SET BookingStatusID = 3 WHERE BookingID = $cancel_id");
     $_SESSION['success_message'] = "✅ ยกเลิกการจองเรียบร้อยแล้ว! (Booking #$cancel_id)";
     _restore_type_admin_role_before_redirect();
@@ -194,49 +191,45 @@ if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
     exit;
 }
 
-// ✅ จัดการการลบการจอง
+/* >>> ลบ */
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $delete_id = intval($_GET['delete']);
-
     if ($IS_TYPE_ADMIN && !_type_admin_can_manage($conn, $delete_id, $TYPE_ADMIN_VTID)) {
         $_SESSION['error_message'] = "❌ คุณไม่มีสิทธิ์ลบการจองนี้ (อนุญาตเฉพาะประเภทสนาม: {$TYPE_ADMIN_NAME})";
         _restore_type_admin_role_before_redirect();
         header("Location: manage_bookings.php");
         exit;
     }
-    
     $delete_sql = "DELETE FROM Tbl_Booking WHERE BookingID = ?";
     $stmt = $conn->prepare($delete_sql);
     $stmt->bind_param("i", $delete_id);
-    
     if ($stmt->execute()) {
         $_SESSION['success_message'] = "🗑️ ลบการจองเรียบร้อยแล้ว! (Booking #$delete_id)";
     } else {
         $_SESSION['error_message'] = "❌ ไม่สามารถลบการจองได้: " . $stmt->error;
     }
     $stmt->close();
-    
     _restore_type_admin_role_before_redirect();
     header("Location: manage_bookings.php");
     exit;
 }
 
-// Get messages
+/* Messages */
 $success_message = $_SESSION['success_message'] ?? '';
-$error_message = $_SESSION['error_message'] ?? '';
+$error_message   = $_SESSION['error_message'] ?? '';
 unset($_SESSION['success_message'], $_SESSION['error_message']);
 
-// ✅ ฟิลเตอร์การค้นหา
-$search = $_GET['search'] ?? '';
-$filter_status = $_GET['status'] ?? '';
+/* ฟิลเตอร์ */
+$search         = $_GET['search']  ?? '';
+$filter_status  = $_GET['status']  ?? '';
 $filter_payment = $_GET['payment'] ?? '';
-$filter_date = $_GET['date'] ?? '';
+$filter_date    = $_GET['date']    ?? '';
 
 $sql = "SELECT b.BookingID, b.VenueID, v.VenueName, c.FirstName, c.LastName, c.Phone,
-            b.StartTime, b.EndTime, b.HoursBooked, b.TotalPrice,
-            bs.StatusName AS BookingStatus, b.BookingStatusID,
-            ps.StatusName AS PaymentStatus, b.PaymentStatusID,
-            b.PaymentSlipPath
+               b.StartTime, b.EndTime, b.HoursBooked, b.TotalPrice,
+               bs.StatusName AS BookingStatus, b.BookingStatusID,
+               ps.StatusName AS PaymentStatus, b.PaymentStatusID,
+               b.PaymentSlipPath
         FROM Tbl_Booking b
         JOIN Tbl_Venue v ON b.VenueID = v.VenueID
         JOIN Tbl_Customer c ON b.CustomerID = c.CustomerID
@@ -248,32 +241,20 @@ if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
     $sql .= " AND v.VenueTypeID = " . (int)$TYPE_ADMIN_VTID;
 }
 
-if (!empty($search)) {
+if ($search !== '') {
     $search_safe = $conn->real_escape_string($search);
     $sql .= " AND (c.FirstName LIKE '%$search_safe%' OR c.LastName LIKE '%$search_safe%' OR v.VenueName LIKE '%$search_safe%' OR b.BookingID LIKE '%$search_safe%')";
 }
-
-if (!empty($filter_status)) {
-    $sql .= " AND b.BookingStatusID = " . intval($filter_status);
-}
-
-if (!empty($filter_payment)) {
-    $sql .= " AND b.PaymentStatusID = " . intval($filter_payment);
-}
-
-if (!empty($filter_date)) {
-    $sql .= " AND DATE(b.StartTime) = '" . $conn->real_escape_string($filter_date) . "'";
-}
+if ($filter_status !== '')  $sql .= " AND b.BookingStatusID = " . intval($filter_status);
+if ($filter_payment !== '') $sql .= " AND b.PaymentStatusID = " . intval($filter_payment);
+if ($filter_date !== '')    $sql .= " AND DATE(b.StartTime) = '" . $conn->real_escape_string($filter_date) . "'";
 
 $sql .= " ORDER BY b.BookingID DESC";
 
 $result = $conn->query($sql);
-
 $bookings = [];
 if ($result && $result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $bookings[] = $row;
-    }
+    while ($row = $result->fetch_assoc()) $bookings[] = $row;
 }
 
 $booking_statuses = $conn->query("SELECT * FROM Tbl_Booking_Status")->fetch_all(MYSQLI_ASSOC);
@@ -281,7 +262,6 @@ $payment_statuses = $conn->query("SELECT * FROM Tbl_Payment_Status")->fetch_all(
 
 $conn->close();
 ?>
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -292,169 +272,28 @@ $conn->close();
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <style>
-  body {
-    font-family: 'Prompt', sans-serif;
-    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-    min-height: 100vh;
-  }
-
-  .glass-card {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    border-radius: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  }
-
-  .status-badge {
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    display: inline-block;
-    white-space: nowrap;
-  }
-
-  .status-pending { background: #fef3c7; color: #92400e; }
-  .status-confirmed { background: #d1fae5; color: #065f46; }
-  .status-cancelled { background: #fee2e2; color: #991b1b; }
-  .status-completed { background: #dbeafe; color: #1e40af; }
-  
-  .payment-pending { background: #fef3c7; color: #92400e; }
-  .payment-paid { background: #d1fae5; color: #065f46; }
-  .payment-refunded { background: #e5e7eb; color: #374151; }
-
-  .modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
-    animation: fadeIn 0.3s;
-  }
-
-  .modal-content {
-    background: white;
-    margin: 3% auto;
-    padding: 0;
-    border-radius: 20px;
-    max-width: 700px;
-    width: 90%;
-    max-height: 90vh;
-    overflow: hidden;
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-    animation: slideDown 0.4s;
-  }
-
-  .slip-modal-header {
-    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-    color: white;
-    padding: 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .slip-modal-body {
-    padding: 2rem;
-    max-height: calc(90vh - 100px);
-    overflow-y: auto;
-  }
-
-  .slip-image-container {
-    text-align: center;
-    padding: 1.5rem;
-    background: #f9fafb;
-    border-radius: 12px;
-    border: 2px solid #3b82f6;
-  }
-
-  .slip-image {
-    max-width: 100%;
-    height: auto;
-    max-height: 500px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    object-fit: contain;
-  }
-
-  .btn-view-slip {
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: white;
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: none;
-    cursor: pointer;
-    margin-top: 6px;
-    white-space: nowrap;
-  }
-
-  .btn-view-slip:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-    background: linear-gradient(135deg, #059669, #047857);
-  }
-
-  .no-slip-text {
-    color: #9ca3af;
-    font-size: 0.75rem;
-    font-style: italic;
-    display: block;
-    margin-top: 4px;
-  }
-
-  .close-modal {
-    color: white;
-    font-size: 2rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    line-height: 1;
-  }
-
-  .close-modal:hover {
-    transform: rotate(90deg) scale(1.1);
-  }
-
-  table { font-size: 0.875rem; }
-  table td { vertical-align: middle; }
-  .payment-cell { min-width: 140px; }
-
-  .btn-delete {
-    background: linear-gradient(135deg, #dc2626, #991b1b);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: none;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .btn-delete:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.5);
-    background: linear-gradient(135deg, #991b1b, #7f1d1d);
-  }
-
-  .action-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-  }
+/* --- (สไตล์เดิมทั้งหมดคงไว้) --- */
+  body {font-family:'Prompt',sans-serif;background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);min-height:100vh}
+  .glass-card{background:rgba(255,255,255,.95);backdrop-filter:blur(10px);border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,.1)}
+  .status-badge{padding:6px 12px;border-radius:20px;font-size:.75rem;font-weight:600;display:inline-block;white-space:nowrap}
+  .status-pending{background:#fef3c7;color:#92400e}.status-confirmed{background:#d1fae5;color:#065f46}
+  .status-cancelled{background:#fee2e2;color:#991b1b}.status-completed{background:#dbeafe;color:#1e40af}
+  .payment-pending{background:#fef3c7;color:#92400e}.payment-paid{background:#d1fae5;color:#065f46}.payment-refunded{background:#e5e7eb;color:#374151}
+  .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.8)}
+  .modal-content{background:#fff;margin:3% auto;padding:0;border-radius:20px;max-width:700px;width:90%;max-height:90vh;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.5)}
+  .slip-modal-header{background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);color:#fff;padding:1.5rem;display:flex;justify-content:space-between;align-items:center}
+  .slip-modal-body{padding:2rem;max-height:calc(90vh - 100px);overflow-y:auto}
+  .slip-image-container{text-align:center;padding:1.5rem;background:#f9fafb;border-radius:12px;border:2px solid #3b82f6}
+  .slip-image{max-width:100%;height:auto;max-height:500px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);object-fit:contain}
+  .btn-view-slip{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:8px 14px;border-radius:8px;font-size:.8rem;font-weight:600;transition:.2s;display:inline-flex;align-items:center;gap:6px;border:none;cursor:pointer;margin-top:6px;white-space:nowrap}
+  .btn-view-slip:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(16,185,129,.4);background:linear-gradient(135deg,#059669,#047857)}
+  .no-slip-text{color:#9ca3af;font-size:.75rem;font-style:italic;display:block;margin-top:4px}
+  .close-modal{color:#fff;font-size:2rem;cursor:pointer;transition:.2s;line-height:1}
+  .close-modal:hover{transform:rotate(90deg) scale(1.1)}
+  table{font-size:.875rem} table td{vertical-align:middle} .payment-cell{min-width:140px}
+  .btn-delete{background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;padding:6px 12px;border-radius:8px;font-size:.75rem;font-weight:600;transition:.2s;display:inline-flex;align-items:center;gap:6px;border:none;cursor:pointer;white-space:nowrap}
+  .btn-delete:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(220,38,38,.5);background:linear-gradient(135deg,#991b1b,#7f1d1d)}
+  .action-buttons{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 </style>
 </head>
 <body>
@@ -462,9 +301,7 @@ $conn->close();
 <!-- Header -->
 <header class="bg-white shadow-lg sticky top-0 z-50">
   <div class="container mx-auto px-4 py-3 flex justify-between items-center">
-    <div class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-      CY Arena Admin
-    </div>
+    <div class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">CY Arena Admin</div>
     <div class="flex items-center space-x-4">
       <span class="text-sm font-medium text-gray-700">👤 <?php echo htmlspecialchars($userName); ?></span>
       <div class="w-10 h-10 rounded-full overflow-hidden border-2 border-blue-500">
@@ -630,9 +467,7 @@ $conn->close();
                     <i class="fas fa-receipt"></i> ดูสลิป
                   </button>
                 <?php else: ?>
-                  <span class="no-slip-text">
-                    <i class="fas fa-times-circle"></i> ยังไม่แนบสลิป
-                  </span>
+                  <span class="no-slip-text"><i class="fas fa-times-circle"></i> ยังไม่แนบสลิป</span>
                 <?php endif; ?>
               </td>
               <td class="py-3 px-4">
@@ -646,9 +481,7 @@ $conn->close();
                      class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded text-xs font-semibold inline-block">
                     <i class="fas fa-times"></i> ยกเลิก
                   </a>
-                  <button type="button"
-                          onclick="confirmDelete(<?php echo $row['BookingID']; ?>)"
-                          class="btn-delete">
+                  <button type="button" onclick="confirmDelete(<?php echo $row['BookingID']; ?>)" class="btn-delete">
                     <i class="fas fa-trash-alt"></i> ลบ
                   </button>
                 </div>
@@ -676,36 +509,28 @@ $conn->close();
         
         <div class="mb-4">
           <label class="block font-semibold mb-2 text-gray-700">Booking ID</label>
-          <input type="text" id="display_booking_id" disabled 
-                 class="w-full px-4 py-2 border rounded-lg bg-gray-100">
+          <input type="text" id="display_booking_id" disabled class="w-full px-4 py-2 border rounded-lg bg-gray-100">
         </div>
 
         <div class="mb-4">
           <label class="block font-semibold mb-2 text-gray-700">สถานะการจอง</label>
-          <select name="booking_status" id="edit_booking_status" 
-                  class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+          <select name="booking_status" id="edit_booking_status" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
             <?php foreach ($booking_statuses as $status): ?>
-              <option value="<?php echo $status['BookingStatusID']; ?>">
-                <?php echo htmlspecialchars($status['StatusName']); ?>
-              </option>
+              <option value="<?php echo $status['BookingStatusID']; ?>"><?php echo htmlspecialchars($status['StatusName']); ?></option>
             <?php endforeach; ?>
           </select>
         </div>
 
         <div class="mb-4">
           <label class="block font-semibold mb-2 text-gray-700">สถานะการชำระเงิน</label>
-          <select name="payment_status" id="edit_payment_status"
-                  class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+          <select name="payment_status" id="edit_payment_status" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
             <?php foreach ($payment_statuses as $status): ?>
-              <option value="<?php echo $status['PaymentStatusID']; ?>">
-                <?php echo htmlspecialchars($status['StatusName']); ?>
-              </option>
+              <option value="<?php echo $status['PaymentStatusID']; ?>"><?php echo htmlspecialchars($status['StatusName']); ?></option>
             <?php endforeach; ?>
           </select>
         </div>
 
-        <button type="submit" 
-                class="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-3 rounded-lg font-bold shadow-lg transition">
+        <button type="submit" class="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-3 rounded-lg font-bold shadow-lg transition">
           <i class="fas fa-check-circle mr-2"></i>บันทึกการเปลี่ยนแปลง
         </button>
       </form>
@@ -717,38 +542,22 @@ $conn->close();
 <div id="slipModal" class="modal">
   <div class="modal-content">
     <div class="slip-modal-header">
-      <h3 class="text-xl font-bold">
-        <i class="fas fa-receipt mr-2"></i>สลิปการโอนเงิน
-      </h3>
+      <h3 class="text-xl font-bold"><i class="fas fa-receipt mr-2"></i>สลิปการโอนเงิน</h3>
       <span class="close-modal" onclick="closeSlipModal()">&times;</span>
     </div>
     <div class="slip-modal-body">
       <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg">
         <div class="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span class="text-gray-600">Booking ID:</span>
-            <strong class="text-blue-700 ml-2">#<span id="slip_booking_id">-</span></strong>
-          </div>
-          <div>
-            <span class="text-gray-600">สนาม:</span>
-            <strong class="text-gray-800 ml-2" id="slip_venue_name">-</strong>
-          </div>
-          <div class="col-span-2">
-            <span class="text-gray-600">ยอดชำระ:</span>
-            <strong class="text-green-600 ml-2 text-lg">฿<span id="slip_amount">0.00</span></strong>
-          </div>
+          <div><span class="text-gray-600">Booking ID:</span><strong class="text-blue-700 ml-2">#<span id="slip_booking_id">-</span></strong></div>
+          <div><span class="text-gray-600">สนาม:</span><strong class="text-gray-800 ml-2" id="slip_venue_name">-</strong></div>
+          <div class="col-span-2"><span class="text-gray-600">ยอดชำระ:</span><strong class="text-green-600 ml-2 text-lg">฿<span id="slip_amount">0.00</span></strong></div>
         </div>
       </div>
-
       <div class="slip-image-container">
         <img id="slipImage" src="" alt="Payment Slip" class="slip-image">
       </div>
-      
       <div class="mt-4 text-center">
-        <p class="text-sm text-gray-600 mb-3">
-          <i class="fas fa-info-circle mr-1"></i>
-          กรุณาตรวจสอบยอดเงินและข้อมูลการโอนให้ถูกต้อง
-        </p>
+        <p class="text-sm text-gray-600 mb-3"><i class="fas fa-info-circle mr-1"></i>กรุณาตรวจสอบยอดเงินและข้อมูลการโอนให้ถูกต้อง</p>
         <button type="button" onclick="closeSlipModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition">
           <i class="fas fa-check mr-2"></i>ตรวจสอบแล้ว
         </button>
@@ -758,7 +567,7 @@ $conn->close();
 </div>
 
 <script>
-function openEditModal(booking) {
+function openEditModal(booking){
   document.getElementById('edit_booking_id').value = booking.BookingID;
   document.getElementById('display_booking_id').value = '#' + booking.BookingID;
   document.getElementById('edit_booking_status').value = booking.BookingStatusID;
@@ -766,53 +575,28 @@ function openEditModal(booking) {
   document.getElementById('editModal').style.display = 'block';
   document.body.style.overflow = 'hidden';
 }
-
-function closeEditModal() {
-  document.getElementById('editModal').style.display = 'none';
-  document.body.style.overflow = 'auto';
+function closeEditModal(){document.getElementById('editModal').style.display='none';document.body.style.overflow='auto';}
+function viewSlip(slipPath,bookingId,venueName,amount){
+  document.getElementById('slip_booking_id').textContent=bookingId;
+  document.getElementById('slip_venue_name').textContent=venueName;
+  document.getElementById('slip_amount').textContent=parseFloat(amount).toFixed(2);
+  document.getElementById('slipImage').src=slipPath;
+  document.getElementById('slipModal').style.display='block';
+  document.body.style.overflow='hidden';
 }
-
-function viewSlip(slipPath, bookingId, venueName, amount) {
-  document.getElementById('slip_booking_id').textContent = bookingId;
-  document.getElementById('slip_venue_name').textContent = venueName;
-  document.getElementById('slip_amount').textContent = parseFloat(amount).toFixed(2);
-  document.getElementById('slipImage').src = slipPath;
-  document.getElementById('slipModal').style.display = 'block';
-  document.body.style.overflow = 'hidden';
+function closeSlipModal(){document.getElementById('slipModal').style.display='none';document.body.style.overflow='auto';}
+function confirmDelete(bookingId){
+  const message=`🗑️ ต้องการลบการจองนี้ออกจากระบบหรือไม่?\n\n📌 Booking ID: #${bookingId}\n\n⚠️ คำเตือน:\n• ข้อมูลจะถูกลบออกจากระบบถาวร\n• ไม่สามารถกู้คืนข้อมูลได้\n• หากต้องการเก็บประวัติ ให้ใช้ "ยกเลิก" แทน\n\n❓ ยืนยันการลบ?`;
+  if(confirm(message)){window.location.href=`?delete=${bookingId}`;}
 }
-
-function closeSlipModal() {
-  document.getElementById('slipModal').style.display = 'none';
-  document.body.style.overflow = 'auto';
+window.onclick=function(e){
+  const editModal=document.getElementById('editModal');
+  const slipModal=document.getElementById('slipModal');
+  if(e.target==editModal) closeEditModal();
+  if(e.target==slipModal) closeSlipModal();
 }
-
-function confirmDelete(bookingId) {
-  const message = `🗑️ ต้องการลบการจองนี้ออกจากระบบหรือไม่?\n\n` +
-                  `📌 Booking ID: #${bookingId}\n\n` +
-                  `⚠️ คำเตือน:\n` +
-                  `• ข้อมูลจะถูกลบออกจากระบบถาวร\n` +
-                  `• ไม่สามารถกู้คืนข้อมูลได้\n` +
-                  `• หากต้องการเก็บประวัติ ให้ใช้ "ยกเลิก" แทน\n\n` +
-                  `❓ ยืนยันการลบ?`;
-  if (confirm(message)) {
-    window.location.href = `?delete=${bookingId}`;
-  }
-}
-
-window.onclick = function(event) {
-  const editModal = document.getElementById('editModal');
-  const slipModal = document.getElementById('slipModal');
-  if (event.target == editModal) closeEditModal();
-  if (event.target == slipModal) closeSlipModal();
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  const modalContents = document.querySelectorAll('.modal-content');
-  modalContents.forEach(function(content) {
-    content.addEventListener('click', function(e) {
-      e.stopPropagation();
-    });
-  });
+document.addEventListener('DOMContentLoaded',function(){
+  document.querySelectorAll('.modal-content').forEach(function(c){c.addEventListener('click',e=>e.stopPropagation());});
 });
 </script>
 
@@ -820,10 +604,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </html>
 
 <?php
-/* >>> ADD: คืนค่า role เดิม */
+/* >>> ADD: คืนค่า role เดิม (ไม่มีผลในเวอร์ชันนี้แต่คงไว้) */
 if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
     $_SESSION['role'] = 'type_admin';
     unset($_SESSION['role_backup_for_type_admin']);
 }
 ?>
-
