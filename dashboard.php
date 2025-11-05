@@ -273,8 +273,8 @@ CSS
         </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
       <?php elseif ($isSuper): ?>
-        <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>          <!-- เพิ่มให้ super_admin -->
-        <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>            <!-- เพิ่มให้ super_admin -->
+        <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
+        <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
         <a href="promotion_manage.php" class="nav-link promo-link">
           🎁 จัดการโปรโมชั่น <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?= $activePromoCount ?></span><?php endif; ?>
