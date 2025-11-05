@@ -26,6 +26,53 @@ if (!in_array($ROLE, ['admin','employee','super_admin'], true)) {
 include 'db_connect.php';
 
 /* >>> OWNER-SCOPE: เตรียมคอลัมน์เจ้าของสนาม (ทำครั้งเดียว) */
+include 'db_connect.php';
+
+/* ===== Schema guard: เพิ่มคอลัมน์/ดัชนีถ้ายังไม่มี (ไม่ใช้ IF NOT EXISTS) ===== */
+function colExists(mysqli $c, string $table, string $column): bool {
+    $sql = "SELECT 1
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+            LIMIT 1";
+    $st = $c->prepare($sql);
+    $st->bind_param("ss", $table, $column);
+    $st->execute(); $st->store_result();
+    $ok = $st->num_rows > 0;
+    $st->close();
+    return $ok;
+}
+function idxExists(mysqli $c, string $table, string $index): bool {
+    $sql = "SELECT 1
+            FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?
+            LIMIT 1";
+    $st = $c->prepare($sql);
+    $st->bind_param("ss", $table, $index);
+    $st->execute(); $st->store_result();
+    $ok = $st->num_rows > 0;
+    $st->close();
+    return $ok;
+}
+
+try {
+    if (!colExists($conn, 'Tbl_Venue', 'CreatedByUserID')) {
+        $conn->query("ALTER TABLE `Tbl_Venue` ADD COLUMN `CreatedByUserID` INT NULL");
+    }
+    if (!colExists($conn, 'Tbl_Venue', 'CreatedByRole')) {
+        // ใช้ ENUM ตามที่ออกแบบ
+        $conn->query("ALTER TABLE `Tbl_Venue`
+                      ADD COLUMN `CreatedByRole` ENUM('super_admin','employee') NULL");
+    }
+    if (!idxExists($conn, 'Tbl_Venue', 'idx_creator')) {
+        $conn->query("ALTER TABLE `Tbl_Venue`
+                      ADD INDEX `idx_creator` (`CreatedByUserID`,`CreatedByRole`)");
+    }
+} catch (Throwable $e) {
+    // ไม่ให้เด้งหน้า – บันทึกไว้เฉยๆ
+    error_log('[admin_venues schema guard] '.$e->getMessage());
+}
+/* ===== END Schema guard ===== */
+
 @$conn->query("
   ALTER TABLE Tbl_Venue
   ADD COLUMN IF NOT EXISTS CreatedByUserID INT NULL,
