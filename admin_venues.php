@@ -1,753 +1,225 @@
 <?php
-// admin_venues.php
-// Admin page to create/edit venues, upload images, set maintenance status, and delete.
-
+// admin_venues.php – จัดการสนาม เฉพาะบริษัทของตน
 session_start();
+require_once __DIR__.'/includes/auth.php';
+require_login();
+require_company_scope(); // <<< บังคับมี company_id สำหรับ admin/employee
 
-/* >>> ADD: ป้องกัน cache ให้โหลดข้อมูลสดหลัง redirect เสมอ */
+// ป้องกัน cache
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-/* >>> ADD: รองรับสิทธิ์ type_admin (จำกัดตามประเภทสนามที่ได้รับมอบหมาย) */
-$IS_TYPE_ADMIN   = false;
-$TYPE_ADMIN_VTID = 0;
-$TYPE_ADMIN_NAME = '';
-if (isset($_SESSION['role']) && $_SESSION['role'] === 'type_admin') {
-    $IS_TYPE_ADMIN   = true;
-    $TYPE_ADMIN_VTID = (int)($_SESSION['type_admin_venue_type_id'] ?? 0);
-    $TYPE_ADMIN_NAME = (string)($_SESSION['type_admin_type_name'] ?? '');
-    // สวมบทเป็น employee ชั่วคราวเพื่อผ่านการตรวจบทบาทเดิม
-    $_SESSION['role_backup_for_type_admin'] = 'type_admin';
-    $_SESSION['role'] = 'employee';
-}
-// <<< END ADD
-
-// ✅ ตรวจสอบบทบาท (ต้องเป็นพนักงาน หรือ admin)
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'employee') {
-    echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์เข้าถึงหน้านี้</h2>";
-    exit;
-}
-
+if (!file_exists('db_connect.php')) { die("Fatal Error: ไม่พบไฟล์ db_connect.php"); }
 include 'db_connect.php';
 
-// Fetch venue types for dropdown
-$types = [];
-$typeSql = "SELECT VenueTypeID, TypeName FROM Tbl_Venue_Type ORDER BY TypeName ASC";
-if ($res = $conn->query($typeSql)) {
-    while ($row = $res->fetch_assoc()) { $types[] = $row; }
-    $res->free();
+function h($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+$COMPANY_ID = (int)($_SESSION['company_id'] ?? 0);
+
+// ====== สร้าง/แก้ไข/ลบ (เฉพาะของบริษัทตนเอง) ======
+$flash = "";
+
+// สร้างสนาม
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='create') {
+    $name = trim($_POST['VenueName'] ?? '');
+    $type = (int)($_POST['VenueTypeID'] ?? 0);
+    $price= (float)($_POST['PricePerHour'] ?? 0);
+    $status = trim($_POST['Status'] ?? 'available');
+    $open = $_POST['TimeOpen'] ?? null;
+    $close= $_POST['TimeClose'] ?? null;
+    $img  = $_POST['ImageURL'] ?? null;
+
+    if ($name !== '' && $type>0 && $COMPANY_ID>0) {
+        $sql = "INSERT INTO Tbl_Venue (CompanyID, VenueName, VenueTypeID, PricePerHour, Status, TimeOpen, TimeClose, ImageURL)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        if ($stmt = $conn->prepare($sql)) {
+            $stmt->bind_param("isidssss", $COMPANY_ID, $name, $type, $price, $status, $open, $close, $img);
+            if ($stmt->execute()) { $flash = "✅ เพิ่มสนามสำเร็จ"; } else { $flash = "❌ ไม่สำเร็จ: ".h($stmt->error); }
+            $stmt->close();
+        } else { $flash = "❌ เตรียมคำสั่งไม่สำเร็จ"; }
+    } else { $flash = "⚠️ กรอกข้อมูลไม่ครบ"; }
 }
 
-/* >>> ADD: ถ้าเป็น type_admin ให้เห็นเฉพาะประเภทสนามของตนเอง */
-if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
-    $types = array_values(array_filter($types, function($t) use ($TYPE_ADMIN_VTID) {
-        return (int)$t['VenueTypeID'] === $TYPE_ADMIN_VTID;
-    }));
-}
-// <<< END ADD
+// แก้ไขสนาม
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='update') {
+    $vid = (int)($_POST['VenueID'] ?? 0);
+    $name = trim($_POST['VenueName'] ?? '');
+    $type = (int)($_POST['VenueTypeID'] ?? 0);
+    $price= (float)($_POST['PricePerHour'] ?? 0);
+    $status = trim($_POST['Status'] ?? 'available');
+    $open = $_POST['TimeOpen'] ?? null;
+    $close= $_POST['TimeClose'] ?? null;
+    $img  = $_POST['ImageURL'] ?? null;
 
-// If editing
-$editing = false;
-$editRow = null;
-if (isset($_GET['id']) && ctype_digit($_GET['id'])) {
-    $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ?");
-    $stmt->bind_param("i", $_GET['id']);
-    $stmt->execute();
-    $editRow = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    if ($editRow) $editing = true;
+    if ($vid>0 && $name !== '' && $type>0 && $COMPANY_ID>0) {
+        $sql = "UPDATE Tbl_Venue
+                SET VenueName=?, VenueTypeID=?, PricePerHour=?, Status=?, TimeOpen=?, TimeClose=?, ImageURL=?
+                WHERE VenueID=? AND CompanyID=?";
+        if ($stmt = $conn->prepare($sql)) {
+            $stmt->bind_param("sidsssiii", $name, $type, $price, $status, $open, $close, $img, $vid, $COMPANY_ID);
+            if ($stmt->execute()) { $flash = "✅ แก้ไขสนามสำเร็จ"; } else { $flash = "❌ ไม่สำเร็จ: ".h($stmt->error); }
+            $stmt->close();
+        } else { $flash = "❌ เตรียมคำสั่งไม่สำเร็จ"; }
+    } else { $flash = "⚠️ กรอกข้อมูลไม่ครบ"; }
 }
 
-/* >>> ADD: ถ้าเป็น type_admin ห้ามแก้ไขสนามข้ามประเภท */
-if ($editing && $IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
-    if ((int)$editRow['VenueTypeID'] !== $TYPE_ADMIN_VTID) {
-        echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์แก้ไขสนามนี้ (อนุญาตเฉพาะประเภท: "
-            . htmlspecialchars($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) . ")</h2>";
-        exit;
+// ลบสนาม
+if (isset($_GET['delete'])) {
+    $vid = (int)$_GET['delete'];
+    if ($vid>0 && $COMPANY_ID>0) {
+        $sql = "DELETE FROM Tbl_Venue WHERE VenueID=? AND CompanyID=?";
+        if ($stmt = $conn->prepare($sql)) {
+            $stmt->bind_param("ii", $vid, $COMPANY_ID);
+            if ($stmt->execute()) { $flash = "✅ ลบสนามสำเร็จ"; } else { $flash = "❌ ไม่สำเร็จ: ".h($stmt->error); }
+            $stmt->close();
+        } else { $flash = "❌ เตรียมคำสั่งไม่สำเร็จ"; }
     }
 }
-// <<< END ADD
 
-// Fetch all venues
+// ====== ลิสต์/ค้นหาเฉพาะของบริษัท ======
 $venues = [];
-$search = isset($_GET['q']) ? trim($_GET['q']) : '';
+$search = trim($_GET['q'] ?? '');
+
 if ($search !== '') {
-    $like = '%' . $search . '%';
-    $stmt = $conn->prepare("SELECT v.*, t.TypeName FROM Tbl_Venue v 
-        JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
-        WHERE v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?
-        ORDER BY v.VenueID DESC");
-    $stmt->bind_param("sss", $like, $like, $like);
-    $stmt->execute();
-    $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-} else {
-    $sql = "SELECT v.*, t.TypeName FROM Tbl_Venue v 
-            JOIN Tbl_Venue_Type t ON v.VenueTypeID = t.VenueTypeID
+    $like = '%'.$search.'%';
+    $sql = "SELECT v.*, t.TypeName
+            FROM Tbl_Venue v
+            JOIN Tbl_Venue_Type t ON t.VenueTypeID = v.VenueTypeID
+            WHERE v.CompanyID = ?
+              AND (v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?)
             ORDER BY v.VenueID DESC";
-    if ($res = $conn->query($sql)) {
-        $venues = $res->fetch_all(MYSQLI_ASSOC);
-        $res->free();
+    if ($stmt = $conn->prepare($sql)) {
+        $stmt->bind_param("isss", $COMPANY_ID, $like, $like, $like);
+        $stmt->execute();
+        $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    }
+} else {
+    $sql = "SELECT v.*, t.TypeName
+            FROM Tbl_Venue v
+            JOIN Tbl_Venue_Type t ON t.VenueTypeID = v.VenueTypeID
+            WHERE v.CompanyID = ?
+            ORDER BY v.VenueID DESC";
+    if ($stmt = $conn->prepare($sql)) {
+        $stmt->bind_param("i", $COMPANY_ID);
+        $stmt->execute();
+        $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
     }
 }
 
-/* >>> ADD: จำกัดรายการสนามให้ตรงกับประเภทของ type_admin */
-if ($IS_TYPE_ADMIN && $TYPE_ADMIN_VTID > 0) {
-    $venues = array_values(array_filter($venues, function($v) use ($TYPE_ADMIN_VTID) {
-        return (int)$v['VenueTypeID'] === $TYPE_ADMIN_VTID;
-    }));
+// โหลดประเภทสนามไว้กรอกฟอร์ม
+$types = [];
+if ($rs = $conn->query("SELECT VenueTypeID, TypeName FROM Tbl_Venue_Type ORDER BY TypeName")) {
+    $types = $rs->fetch_all(MYSQLI_ASSOC);
+    $rs->free();
 }
-// <<< END ADD
-
-function h($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<title>จัดการสนาม (Admin)</title>
+<title>จัดการสนาม (บริษัทของฉัน)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<style>
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #2B27ECFF 100%);
-    min-height: 100vh;
-    padding: 0;
-}
-
-/* Navbar Styles */
-.navbar-modern {
-    background: rgba(255, 255, 255, 0.98);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    padding: 1rem 0;
-    margin-bottom: 2rem;
-}
-
-.navbar-brand-modern {
-    font-size: 1.5rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin: 0;
-}
-
-.container-main {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 1rem 2rem;
-}
-
-/* Alert Styles */
-.alert-modern {
-    border: none;
-    border-radius: 15px;
-    padding: 1rem 1.5rem;
-    margin-bottom: 1.5rem;
-    animation: slideDown 0.3s ease-out;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-
-@keyframes slideDown {
-    from { transform: translateY(-20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
-
-/* Search Card */
-.search-card {
-    background: white;
-    border-radius: 20px;
-    padding: 2rem;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-    margin-bottom: 2rem;
-}
-
-.search-input {
-    border: 2px solid #e0e7ff;
-    border-radius: 12px;
-    padding: 0.8rem 1.2rem;
-    transition: all 0.3s ease;
-}
-
-.search-input:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
-    outline: none;
-}
-
-/* Button Styles */
-.btn-modern {
-    border: none;
-    border-radius: 12px;
-    padding: 0.8rem 2rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.btn-primary-modern {
-    background: linear-gradient(135deg, #667eea 0%, #514BA2FF 100%);
-    color: white;
-}
-
-.btn-primary-modern:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
-    color: white;
-}
-
-.btn-outline-modern {
-    background: white;
-    color: #667eea;
-    border: 2px solid #667eea;
-}
-
-.btn-outline-modern:hover {
-    background: #667eea;
-    color: white;
-    transform: translateY(-2px);
-}
-
-/* Card Styles */
-.card-modern {
-    background: white;
-    border: none;
-    border-radius: 20px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    transition: all 0.3s ease;
-    margin-bottom: 2rem;
-}
-
-.card-modern:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
-}
-
-.card-header-modern {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 1.5rem;
-    font-size: 1.2rem;
-    font-weight: 700;
-    border: none;
-}
-
-.card-body-modern {
-    padding: 2rem;
-}
-
-/* Form Styles */
-.form-label-modern {
-    font-weight: 600;
-    color: #4a5568;
-    margin-bottom: 0.5rem;
-    display: block;
-}
-
-.form-control-modern,
-.form-select-modern {
-    border: 2px solid #e0e7ff;
-    border-radius: 10px;
-    padding: 0.7rem 1rem;
-    transition: all 0.3s ease;
-    width: 100%;
-}
-
-.form-control-modern:focus,
-.form-select-modern:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
-    outline: none;
-}
-
-textarea.form-control-modern {
-    resize: vertical;
-}
-
-/* Table Styles */
-.table-modern {
-    background: white;
-    margin: 0;
-}
-
-.table-modern thead {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.table-modern thead th {
-    border: none;
-    padding: 1rem;
-    font-weight: 600;
-    vertical-align: middle;
-}
-
-.table-modern tbody tr {
-    transition: all 0.3s ease;
-    border-bottom: 1px solid #f0f4ff;
-}
-
-.table-modern tbody tr:hover {
-    background: #f8faff;
-}
-
-.table-modern tbody td {
-    padding: 1rem;
-    vertical-align: middle;
-}
-
-/* Image Thumbnail */
-.thumb {
-    width: 80px;
-    height: 60px;
-    object-fit: cover;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-.thumb:hover {
-    transform: scale(1.1);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-}
-
-/* Badge Styles */
-.badge-modern {
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    display: inline-block;
-}
-
-.badge-success-modern {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    color: white;
-}
-
-.badge-warning-modern {
-    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-    color: white;
-}
-
-.badge-secondary-modern {
-    background: linear-gradient(135deg, #718096 0%, #4a5568 100%);
-    color: white;
-}
-
-/* Action Buttons */
-.btn-action {
-    padding: 0.4rem 1rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    margin: 0.2rem;
-    border: none;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    display: inline-block;
-}
-
-.btn-edit {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.btn-edit:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-    color: white;
-}
-
-.btn-status-warning {
-    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-    color: white;
-}
-
-.btn-status-warning:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(237, 137, 54, 0.4);
-    color: white;
-}
-
-.btn-status-success {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    color: white;
-}
-
-.btn-status-success:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
-    color: white;
-}
-
-.btn-delete {
-    background: white;
-    color: #f56565;
-    border: 2px solid #f56565;
-}
-
-.btn-delete:hover {
-    background: #f56565;
-    color: white;
-    transform: translateY(-2px);
-}
-
-/* Submit Button */
-.btn-submit {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    padding: 0.8rem 2rem;
-    font-weight: 700;
-    width: 100%;
-    transition: all 0.3s ease;
-    font-size: 1rem;
-}
-
-.btn-submit:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(72, 187, 120, 0.4);
-    color: white;
-}
-
-/* Empty State */
-.empty-state {
-    padding: 3rem;
-    text-align: center;
-    color: #a0aec0;
-}
-
-/* Form Text */
-.form-text-modern {
-    font-size: 0.875rem;
-    color: #718096;
-    margin-top: 0.25rem;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .navbar-modern {
-        padding: 0.75rem 0;
-    }
-    
-    .navbar-brand-modern {
-        font-size: 1.2rem;
-    }
-    
-    .search-card {
-        padding: 1.5rem;
-    }
-    
-    .card-body-modern {
-        padding: 1.5rem;
-    }
-    
-    .btn-action {
-        padding: 0.3rem 0.7rem;
-        font-size: 0.75rem;
-        margin: 0.1rem;
-    }
-    
-    .table-modern {
-        font-size: 0.85rem;
-    }
-    
-    .table-modern thead th,
-    .table-modern tbody td {
-        padding: 0.75rem 0.5rem;
-    }
-}
-
-/* Animation */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.card-modern {
-    animation: fadeIn 0.5s ease-out;
-}
-</style>
+<link rel="stylesheet"
+ href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
 </head>
 <body>
+<main class="container">
+  <h1>สนามของบริษัท: <?php echo h($_SESSION['company_name'] ?? ('#'.$COMPANY_ID)); ?></h1>
+  <?php if (!empty($flash)) : ?>
+    <article role="alert"><?php echo h($flash); ?></article>
+  <?php endif; ?>
 
-<!-- Navbar -->
-<div class="navbar-modern">
-    <div class="container-fluid px-4">
-        <div class="d-flex justify-content-between align-items-center">
-            <h1 class="navbar-brand-modern mb-0">
-                <i class="fas fa-futbol me-2"></i>จัดการสนาม
-            </h1>
-            <a href="dashboard.php" class="btn btn-primary-modern btn-modern">
-                <i class="fas fa-home me-2"></i>กลับหน้า Dashboard
-            </a>
-        </div>
-    </div>
-</div>
+  <article>
+    <form method="get" class="grid">
+      <input name="q" placeholder="ค้นหาชื่อสนาม / ประเภท / สถานะ" value="<?php echo h($search); ?>">
+      <button type="submit">ค้นหา</button>
+      <a href="admin_venues.php" role="button" class="secondary">ล้าง</a>
+    </form>
+  </article>
 
-<!-- >>> ADD: แถบแจ้งเตือนโหมด Type Admin -->
-<?php if ($IS_TYPE_ADMIN): ?>
-<div class="container-main">
-  <div class="alert alert-info alert-modern" role="alert" style="background:#e0f2fe;color:#075985;">
-    <i class="fas fa-shield-alt me-2"></i>
-    โหมด <strong>Type Admin</strong> — จัดการได้เฉพาะประเภทสนาม:
-    <strong><?= h($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) ?></strong>
-  </div>
-</div>
-<?php endif; ?>
-<!-- <<< END ADD -->
+  <article>
+    <h3>เพิ่มสนามใหม่</h3>
+    <form method="post" class="grid">
+      <input type="hidden" name="action" value="create">
+      <label>ชื่อสนาม<input name="VenueName" required></label>
+      <label>ประเภทสนาม
+        <select name="VenueTypeID" required>
+          <option value="">— เลือกประเภท —</option>
+          <?php foreach ($types as $t): ?>
+            <option value="<?php echo (int)$t['VenueTypeID']; ?>"><?php echo h($t['TypeName']); ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>ราคา/ชั่วโมง<input type="number" name="PricePerHour" min="0" step="0.01" value="0"></label>
+      <label>สถานะ
+        <select name="Status">
+          <option value="available">available</option>
+          <option value="maintenance">maintenance</option>
+          <option value="unavailable">unavailable</option>
+        </select>
+      </label>
+      <label>เวลาเปิด (HH:MM)<input type="time" name="TimeOpen"></label>
+      <label>เวลาปิด (HH:MM)<input type="time" name="TimeClose"></label>
+      <label>รูปภาพ (URL)<input name="ImageURL"></label>
+      <button type="submit">เพิ่มสนาม</button>
+    </form>
+  </article>
 
-<div class="container-main">
-    <!-- Flash messages -->
-    <?php if (!empty($_SESSION['flash_success'])): ?>
-      <div class="alert alert-success alert-modern" role="alert">
-        <i class="fas fa-check-circle me-2"></i>
-        <?= h($_SESSION['flash_success']) ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-      <?php unset($_SESSION['flash_success']); ?>
-    <?php endif; ?>
-    <?php if (!empty($_SESSION['flash_error'])): ?>
-      <div class="alert alert-danger alert-modern" role="alert">
-        <i class="fas fa-exclamation-circle me-2"></i>
-        <?= h($_SESSION['flash_error']) ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-      <?php unset($_SESSION['flash_error']); ?>
-    <?php endif; ?>
-
-    <!-- Search -->
-    <div class="search-card">
-        <form class="row g-3" method="get" action="admin_venues.php">
-            <div class="col-md-6">
-                <input type="text" name="q" class="form-control search-input" placeholder="🔍 ค้นหาตามชื่อ ประเภท หรือสถานะ..." value="<?= h($search) ?>">
-            </div>
-            <div class="col-md-3">
-                <button type="submit" class="btn btn-primary-modern btn-modern w-100">
-                    <i class="fas fa-search me-2"></i>ค้นหา
-                </button>
-            </div>
-            <div class="col-md-3">
-                <a href="admin_venues.php" class="btn btn-outline-modern btn-modern w-100">
-                    <i class="fas fa-redo me-2"></i>ล้างตัวกรอง
-                </a>
-            </div>
-        </form>
-    </div>
-
-    <div class="row">
-        <div class="col-lg-5">
-            <div class="card-modern">
-                <div class="card-header-modern">
-                    <i class="fas <?= $editing ? 'fa-edit' : 'fa-plus-circle' ?> me-2"></i>
-                    <?= $editing ? 'แก้ไขสนาม #' . (int)$editRow['VenueID'] : 'เพิ่มสนามใหม่' ?>
-                </div>
-                <div class="card-body-modern">
-                    <form action="venue_save.php" method="post" enctype="multipart/form-data">
-                        <?php if ($editing): ?>
-                            <input type="hidden" name="VenueID" value="<?= (int)$editRow['VenueID'] ?>">
-                        <?php endif; ?>
-                        
-                        <div class="mb-3">
-                            <label class="form-label-modern">ชื่อสนาม</label>
-                            <input type="text" name="VenueName" class="form-control form-control-modern" required value="<?= h($editRow['VenueName'] ?? '') ?>" placeholder="กรอกชื่อสนาม">
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label-modern">ประเภทสนาม</label>
-                            <select name="VenueTypeID" class="form-select form-select-modern" required <?= $IS_TYPE_ADMIN ? 'disabled' : '' ?>>
-                                <option value="">-- เลือกประเภท --</option>
-                                <?php foreach ($types as $t): ?>
-                                    <option value="<?= (int)$t['VenueTypeID'] ?>" <?= ($editing && $editRow['VenueTypeID']==$t['VenueTypeID'])?'selected':'' ?>>
-                                        <?= h($t['TypeName']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <!-- >>> ADD: บังคับส่งค่าและล็อกให้เลือกได้เฉพาะประเภทของตน -->
-                            <?php if ($IS_TYPE_ADMIN): ?>
-                                <input type="hidden" name="VenueTypeID" value="<?= (int)$TYPE_ADMIN_VTID ?>">
-                            <?php endif; ?>
-                            <!-- <<< END ADD -->
-
-                            <!-- >>> ADD: ถ้าเป็น type_admin ให้เตือนว่าถูกจำกัดประเภท -->
-                            <?php if ($IS_TYPE_ADMIN): ?>
-                              <small class="form-text-modern"><i class="fas fa-info-circle me-1"></i>คุณถูกจำกัดให้เลือกเฉพาะประเภท: <strong><?= h($TYPE_ADMIN_NAME ?: ('ID '.$TYPE_ADMIN_VTID)) ?></strong></small>
-                            <?php endif; ?>
-                            <!-- <<< END ADD -->
-                        </div>
-                        
-                        <div class="row">
-                          <div class="col-md-6 mb-3">
-                              <label class="form-label-modern">ราคา/ชั่วโมง (บาท)</label>
-                              <input type="number" min="0" step="0.01" name="PricePerHour" class="form-control form-control-modern" required value="<?= h($editRow['PricePerHour'] ?? '') ?>" placeholder="0.00">
-                          </div>
-                          <div class="col-md-3 mb-3">
-                              <label class="form-label-modern">เปิด</label>
-                              <input type="time" name="TimeOpen" class="form-control form-control-modern" value="<?= h($editRow['TimeOpen'] ?? '') ?>">
-                          </div>
-                          <div class="col-md-3 mb-3">
-                              <label class="form-label-modern">ปิด</label>
-                              <input type="time" name="TimeClose" class="form-control form-control-modern" value="<?= h($editRow['TimeClose'] ?? '') ?>">
-                          </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label-modern">ที่อยู่</label>
-                            <textarea name="Address" class="form-control form-control-modern" rows="2" placeholder="กรอกที่อยู่สนาม"><?= h($editRow['Address'] ?? '') ?></textarea>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label-modern">รายละเอียด</label>
-                            <textarea name="Description" class="form-control form-control-modern" rows="3" placeholder="กรอกรายละเอียดเพิ่มเติม"><?= h($editRow['Description'] ?? '') ?></textarea>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label-modern">รูปภาพ <?= $editing ? '(อัปโหลดใหม่เพื่อเปลี่ยน)' : '' ?></label>
-                            <input type="file" name="ImageFile" accept="image/*" class="form-control form-control-modern">
-                            <?php if ($editing && !empty($editRow['ImageURL'])): ?>
-                                <div class="mt-2">
-                                    <img src="<?= h($editRow['ImageURL']) ?>" class="thumb" alt="">
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label-modern">สถานะ</label>
-                            <select name="Status" class="form-select form-select-modern">
-                                <?php 
-                                $statuses = ['available' => 'เปิดให้จอง', 'maintenance' => 'ปิดปรับปรุงชั่วคราว', 'closed' => 'ปิดถาวร'];
-                                $cur = $editing ? ($editRow['Status'] ?? 'available') : 'available';
-                                foreach ($statuses as $value => $label):
-                                ?>
-                                  <option value="<?= $value ?>" <?= ($cur === $value ? 'selected' : '') ?>><?= $label ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <small class="form-text-modern">
-                                <i class="fas fa-info-circle me-1"></i>เลือก "ปิดปรับปรุงชั่วคราว" เพื่อไม่ให้ลูกค้าจองได้
-                            </small>
-                        </div>
-                        
-                        <button class="btn btn-submit">
-                            <i class="fas fa-save me-2"></i><?= $editing ? 'บันทึกการแก้ไข' : 'เพิ่มสนาม' ?>
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-7">
-            <div class="card-modern">
-                <div class="card-header-modern">
-                    <i class="fas fa-list me-2"></i>รายการสนามทั้งหมด
-                </div>
-                <div class="p-0">
-                    <div class="table-responsive">
-                      <table class="table table-modern mb-0">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>รูป</th>
-                            <th>ชื่อ</th>
-                            <th>ประเภท</th>
-                            <th>ราคา/ชม.</th>
-                            <th>สถานะ</th>
-                            <th class="text-end">การทำงาน</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-<?php $i = count($venues); ?>
-<?php foreach ($venues as $v): ?>
-  <tr>
-    <td><?= $i-- ?></td>
-    <td>
-      <?php if (!empty($v['ImageURL'])): ?>
-        <img class="thumb" src="<?= h($v['ImageURL']) ?>" alt="">
-      <?php endif; ?>
-    </td>
-    <td><?= h($v['VenueName']) ?></td>
-    <td><?= h($v['TypeName']) ?></td>
-    <td><?= number_format((float)$v['PricePerHour'], 2) ?></td>
-    <td>
-      <?php 
-        $map = ['available'=>'success', 'maintenance'=>'warning', 'closed'=>'secondary'];
-        $label = ['available'=>'เปิดให้จอง', 'maintenance'=>'ปิดปรับปรุงชั่วคราว', 'closed'=>'ปิดถาวร'];
-        $status = $v['Status'] ?? 'available';
-      ?>
-      <span class="badge badge-<?= $map[$status] ?? 'secondary' ?>-modern"><?= $label[$status] ?? h($status) ?></span>
-    </td>
-    <td class="text-end">
-        <a class="btn btn-action btn-edit" href="admin_venues.php?id=<?= (int)$v['VenueID'] ?>">
-            <i class="fas fa-edit me-1"></i>แก้ไข
-        </a>
-
-        <form action="venue_set_status.php" method="post" class="d-inline">
-            <input type="hidden" name="VenueID" value="<?= (int)$v['VenueID'] ?>">
-            <?php if (($v['Status'] ?? 'available') !== 'maintenance'): ?>
-              <input type="hidden" name="Status" value="maintenance">
-              <button class="btn btn-action btn-status-warning">
-                  <i class="fas fa-tools me-1"></i>ตั้งเป็นปิดปรับปรุง
-              </button>
-            <?php else: ?>
-              <input type="hidden" name="Status" value="available">
-              <button class="btn btn-action btn-status-success">
-                  <i class="fas fa-check me-1"></i>ตั้งเป็นเปิดให้จอง
-              </button>
-            <?php endif; ?>
-        </form>
-
-        <form action="venue_delete.php" method="post" class="d-inline"
-              onsubmit="return confirm('ยืนยันลบสนามนี้หรือไม่? การลบไม่สามารถกู้คืนได้');">
-            <input type="hidden" name="VenueID" value="<?= (int)$v['VenueID'] ?>">
-            <button class="btn btn-action btn-delete">
-                <i class="fas fa-trash me-1"></i>ลบ
-            </button>
-        </form>
-    </td>
-  </tr>
-<?php endforeach; ?>
-
-<?php if (empty($venues)): ?>
-  <tr>
-      <td colspan="7" class="empty-state">
-          <i class="fas fa-inbox"></i>
-          <p class="mb-0 mt-2">ไม่พบข้อมูล</p>
-      </td>
-  </tr>
-<?php endif; ?>
-                        </tbody>
-                      </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <article>
+    <h3>รายการสนาม</h3>
+    <table role="grid">
+      <thead>
+        <tr>
+          <th>ID</th><th>ชื่อสนาม</th><th>ประเภท</th><th>ราคา</th><th>สถานะ</th><th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($venues as $v): ?>
+          <tr>
+            <td><?php echo (int)$v['VenueID']; ?></td>
+            <td><?php echo h($v['VenueName']); ?></td>
+            <td><?php echo h($v['TypeName']); ?></td>
+            <td><?php echo number_format((float)$v['PricePerHour'], 2); ?></td>
+            <td><?php echo h($v['Status']); ?></td>
+            <td>
+              <details>
+                <summary>แก้ไข</summary>
+                <form method="post" class="grid">
+                  <input type="hidden" name="action" value="update">
+                  <input type="hidden" name="VenueID" value="<?php echo (int)$v['VenueID']; ?>">
+                  <label>ชื่อสนาม<input name="VenueName" required value="<?php echo h($v['VenueName']); ?>"></label>
+                  <label>ประเภทสนาม
+                    <select name="VenueTypeID" required>
+                      <?php foreach ($types as $t): ?>
+                        <option value="<?php echo (int)$t['VenueTypeID']; ?>" <?php echo ((int)$t['VenueTypeID']===(int)$v['VenueTypeID']?'selected':''); ?>>
+                          <?php echo h($t['TypeName']); ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <label>ราคา/ชั่วโมง<input type="number" name="PricePerHour" min="0" step="0.01" value="<?php echo h($v['PricePerHour']); ?>"></label>
+                  <label>สถานะ
+                    <select name="Status">
+                      <?php foreach (['available','maintenance','unavailable'] as $st): ?>
+                        <option value="<?php echo $st; ?>" <?php echo ($st===$v['Status']?'selected':''); ?>><?php echo $st; ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <label>เวลาเปิด<input type="time" name="TimeOpen" value="<?php echo h($v['TimeOpen']); ?>"></label>
+                  <label>เวลาปิด<input type="time" name="TimeClose" value="<?php echo h($v['TimeClose']); ?>"></label>
+                  <label>รูปภาพ (URL)<input name="ImageURL" value="<?php echo h($v['ImageURL']); ?>"></label>
+                  <button type="submit">บันทึก</button>
+                  <a class="contrast" href="?delete=<?php echo (int)$v['VenueID']; ?>" onclick="return confirm('ยืนยันลบสนามนี้?')">ลบ</a>
+                </form>
+              </details>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </article>
+</main>
 </body>
 </html>
-
-<?php
-/* >>> ADD: คืนค่า role เดิม ถ้าเคยสวมบท employee ชั่วคราว */
-if (isset($_SESSION['role_backup_for_type_admin']) && $_SESSION['role_backup_for_type_admin'] === 'type_admin') {
-    $_SESSION['role'] = 'type_admin';
-    unset($_SESSION['role_backup_for_type_admin']);
-}
-/* <<< END ADD */
