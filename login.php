@@ -1,165 +1,140 @@
 <?php
 session_start();
-// ตรวจสอบและรวมไฟล์เชื่อมต่อ
+
+// ===== เชื่อมต่อฐานข้อมูล =====
 if (!file_exists('db_connect.php')) {
     die("Fatal Error: ไม่พบไฟล์ db_connect.php กรุณาตรวจสอบการตั้งชื่อไฟล์.");
 }
-include 'db_connect.php'; // ไฟล์นี้ต้องกำหนดตัวแปร $conn
+include 'db_connect.php'; // กำหนดตัวแปร $conn (mysqli)
 
-// ===== BOOTSTRAP: สร้าง role + ผู้ใช้แอดมินเริ่มต้น (admin/1234) ถ้ายังไม่มี =====
+// ===== ฟังก์ชันเล็ก ๆ =====
+function h($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+
+// ===== สร้าง super_admin / employee เริ่มต้น (เหมือนเดิม ถ้ามีให้คงไว้) =====
 if (isset($conn) && !$conn->connect_error) {
-    // 1) สร้าง role super_admin ถ้ายังไม่มี
     @$conn->query("
         INSERT INTO Tbl_Role (RoleName)
         SELECT 'super_admin'
         FROM DUAL
         WHERE NOT EXISTS (SELECT 1 FROM Tbl_Role WHERE RoleName='super_admin')
     ");
-
-    // >>> ADD: สร้างตารางสิทธิ์ลูกค้าแบบ admin รายประเภทสนาม (ครั้งเดียว) <<<
     @$conn->query("
-        CREATE TABLE IF NOT EXISTS Tbl_Type_Admin (
-            TypeAdminID INT AUTO_INCREMENT PRIMARY KEY,
-            CustomerID  INT NOT NULL,
-            VenueTypeID INT NOT NULL,
-            CreatedAt   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_type_admin_customer (CustomerID),
-            KEY idx_type_admin_type (VenueTypeID)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        INSERT INTO Tbl_Role (RoleName)
+        SELECT 'employee'
+        FROM DUAL
+        WHERE NOT EXISTS (SELECT 1 FROM Tbl_Role WHERE RoleName='employee')
     ");
-    // <<< END ADD >>>
-
-    // 2) ดึง RoleID
-    $rid = null;
-    if ($res = @$conn->query("SELECT RoleID FROM Tbl_Role WHERE RoleName='super_admin' LIMIT 1")) {
-        $row = $res->fetch_assoc();
-        $rid = $row['RoleID'] ?? null;
-        $res->free();
-    }
-
-    if ($rid) {
-        // 3) ถ้ายังไม่มีผู้ใช้ admin ให้สร้างใหม่
+    // ถ้ายังไม่มี user พนักงานเริ่มต้น (admin/1234) อนุโลมให้สร้าง
+    if ($stmt = $conn->prepare("SELECT EmployeeID FROM Tbl_Employee WHERE Username=? LIMIT 1")) {
         $u = 'admin';
-        if ($stmt = $conn->prepare("SELECT EmployeeID FROM Tbl_Employee WHERE Username=? LIMIT 1")) {
-            $stmt->bind_param("s", $u);
-            $stmt->execute();
-            $stmt->store_result();
-
-            if ($stmt->num_rows === 0) {
-                $stmt->close();
-                if ($ins = $conn->prepare("INSERT INTO Tbl_Employee (FirstName, Username, Password, RoleID) VALUES ('Admin','admin','1234',?)")) {
-                    $ins->bind_param("i", $rid);
-                    $ins->execute();
-                    $ins->close();
-                }
-            } else {
-                // มีแล้ว -> อัปเดตรหัส/สิทธิ์ให้เป็น super_admin
-                $stmt->bind_result($eid);
-                $stmt->fetch();
-                $stmt->close();
-                if ($upd = $conn->prepare("UPDATE Tbl_Employee SET Password='1234', RoleID=? WHERE EmployeeID=?")) {
-                    $upd->bind_param("ii", $rid, $eid);
-                    $upd->execute();
-                    $upd->close();
-                }
+        $stmt->bind_param("s", $u);
+        $stmt->execute(); $stmt->store_result();
+        if ($stmt->num_rows === 0) {
+            $stmt->close();
+            // หา role id ของ super_admin
+            $rid = null;
+            if ($r = $conn->query("SELECT RoleID FROM Tbl_Role WHERE RoleName='super_admin' LIMIT 1")) {
+                $row = $r->fetch_assoc(); $rid = (int)$row['RoleID']; $r->free();
             }
-        }
+            if ($rid) {
+                // หมายเหตุ: seed รหัสผ่าน 1234 (ควรเปลี่ยนในโปรดักชัน)
+                @$conn->query("INSERT INTO Tbl_Employee (FirstName, Username, Password, RoleID) VALUES ('Admin','admin','1234',$rid)");
+            }
+        } else { $stmt->close(); }
     }
 }
-// ===== END BOOTSTRAP =====
 
+// ===== การส่งฟอร์มล็อกอิน =====
 $message = "";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username        = trim($_POST['username'] ?? '');
+    $password_plain  = (string)($_POST['password'] ?? '');
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = trim($_POST['username']);
-    $password_plain = trim($_POST['password']);
-    
-    // ตรวจสอบว่ามีการเชื่อมต่อ $conn สำเร็จหรือไม่
-    if (!isset($conn) || $conn->connect_error) {
-        $message = "❌ ไม่สามารถเชื่อมต่อฐานข้อมูลได้: " . ($conn->connect_error ?? "ตัวแปร \$conn ไม่ถูกกำหนดใน db_connect.php");
+    if ($username === '' || $password_plain === '') {
+        $message = "⚠️ กรุณากรอกชื่อผู้ใช้และรหัสผ่าน";
     } else {
         $found = false;
 
-        // --- 1. ตรวจสอบลูกค้า ---
+        // --- 1) ล็อกอินเป็น “ลูกค้า” ---
         $sql_customer = "SELECT CustomerID AS ID, FirstName, Password, AvatarPath FROM Tbl_Customer WHERE Username = ?";
-        
         $stmt = $conn->prepare($sql_customer);
-        if ($stmt === FALSE) {
-            // หาก Query ผิดพลาด (ชื่อตาราง/คอลัมน์ผิด)
-            $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (ลูกค้า): " . htmlspecialchars($conn->error);
-        } else {
+        if ($stmt) {
             $stmt->bind_param("s", $username);
             $stmt->execute();
-            $result = $stmt->get_result();
+            $res = $stmt->get_result();
+            if ($res && $res->num_rows === 1) {
+                $row = $res->fetch_assoc();
 
-            if ($result->num_rows == 1) {
-                $row = $result->fetch_assoc();
+                // ยอมรับทั้ง password hash และ plaintext seed (เฉพาะ dev)
                 if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
-                    $_SESSION['user_id'] = $row['ID'];
-                    $_SESSION['user_name'] = $row['FirstName'];
-                    $_SESSION['avatar_path'] = $row['AvatarPath'] ?? '';
-                    $_SESSION['role'] = 'customer';
+                    $_SESSION['user_id']    = (int)$row['ID'];
+                    $_SESSION['user_name']  = (string)$row['FirstName'];
+                    $_SESSION['avatar_path']= (string)($row['AvatarPath'] ?? '');
+                    $_SESSION['role']       = 'customer';
+                    $found = true;
 
-                    // >>> ADD: เช็คสิทธิ์ลูกค้าที่ถูกแต่งตั้งเป็น admin ราย "ประเภทสนาม"
-                    if ($ta = $conn->prepare("
-                        SELECT t.VenueTypeID, vt.TypeName
-                        FROM Tbl_Type_Admin t
-                        JOIN Tbl_Venue_Type vt ON vt.VenueTypeID = t.VenueTypeID
-                        WHERE t.CustomerID = ?
+                    // >>> ตั้งสิทธิ์ตาม "บริษัท" (แทน type_admin เดิม)
+                    if ($co = $conn->prepare("
+                        SELECT ca.CompanyID, co.CompanyName, ca.Role
+                        FROM Tbl_Company_Admin ca
+                        JOIN Tbl_Company co ON co.CompanyID = ca.CompanyID
+                        WHERE ca.CustomerID = ?
                         LIMIT 1
                     ")) {
-                        $cid = (int)$row['ID'];
-                        $ta->bind_param("i", $cid);
-                        $ta->execute();
-                        $ta_rs = $ta->get_result();
-                        if ($ta_rs && $ta_rs->num_rows === 1) {
-                            $ta_row = $ta_rs->fetch_assoc();
-                            $_SESSION['role'] = 'type_admin'; // ยกระดับลูกค้าคนนี้
-                            $_SESSION['type_admin_venue_type_id'] = (int)$ta_row['VenueTypeID'];
-                            $_SESSION['type_admin_type_name']     = $ta_row['TypeName'];
+                        $cid = (int)$_SESSION['user_id'];
+                        $co->bind_param("i", $cid);
+                        $co->execute();
+                        $co_rs = $co->get_result();
+                        if ($co_rs && $co_rs->num_rows === 1) {
+                            $co_row = $co_rs->fetch_assoc();
+                            $_SESSION['company_id']   = (int)$co_row['CompanyID'];
+                            $_SESSION['company_name'] = (string)$co_row['CompanyName'];
+                            // ยกระดับ role เป็น admin/employee ตามบทบาทบริษัท
+                            $_SESSION['role'] = ($co_row['Role'] === 'employee') ? 'employee' : 'admin';
+                        } else {
+                            $_SESSION['company_id'] = null; // ลูกค้าทั่วไป
                         }
-                        $ta->close();
+                        $co->close();
                     }
-                    // <<< END ADD >>>
 
+                    // เข้าสู่ระบบสำเร็จ
                     $stmt->close();
                     $conn->close();
                     header("Location: dashboard.php");
                     exit;
                 } else {
                     $message = "❌ รหัสผ่านไม่ถูกต้อง";
-                    $found = true;
                 }
             }
             $stmt->close();
         }
 
-        // --- 2. ตรวจสอบพนักงาน (ทำงานเมื่อไม่พบ/รหัสผ่านผิดของลูกค้า และยังไม่มีข้อผิดพลาด Query) ---
-        if (!$found && empty($message)) {
-            // ปรับ Query: join role เพื่อรู้สิทธิ์ (employee / super_admin)
-            $sql_employee = "SELECT e.EmployeeID AS ID, e.FirstName, e.Password,
-                                    COALESCE(r.RoleName,'employee') AS RoleName
-                             FROM Tbl_Employee e
-                             LEFT JOIN Tbl_Role r ON e.RoleID = r.RoleID
-                             WHERE e.Username = ?";
-            
-            $stmt = $conn->prepare($sql_employee);
-
-            if ($stmt === FALSE) {
-                // หาก Query ผิดพลาด (ชื่อตาราง/คอลัมน์ผิด)
-                $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (พนักงาน): " . htmlspecialchars($conn->error);
-            } else {
+        // --- 2) ล็อกอินเป็น “พนักงาน/ระบบ” ---
+        if (!$found && $message === "") {
+            $sql_emp = "
+                SELECT e.EmployeeID AS ID, e.FirstName, e.Password, r.RoleName
+                FROM Tbl_Employee e
+                JOIN Tbl_Role r ON r.RoleID = e.RoleID
+                WHERE e.Username = ?
+                LIMIT 1
+            ";
+            if ($stmt = $conn->prepare($sql_emp)) {
                 $stmt->bind_param("s", $username);
                 $stmt->execute();
-                $result = $stmt->get_result();
-
-                if ($result->num_rows == 1) {
-                    $row = $result->fetch_assoc();
+                $res = $stmt->get_result();
+                if ($res && $res->num_rows === 1) {
+                    $row = $res->fetch_assoc();
                     if (password_verify($password_plain, $row['Password']) || $password_plain === $row['Password']) {
-                        $_SESSION['user_id'] = $row['ID'];
-                        $_SESSION['user_name'] = $row['FirstName'];
-                        $_SESSION['avatar_path'] = $row['AvatarPath'] ?? ''; // ไม่มีใน SELECT จะได้ค่าว่าง
-                        $_SESSION['role'] = ($row['RoleName'] === 'super_admin') ? 'super_admin' : 'employee';
+                        $_SESSION['user_id']    = (int)$row['ID'];
+                        $_SESSION['user_name']  = (string)$row['FirstName'];
+                        $_SESSION['avatar_path']= '';
+                        $_SESSION['role']       = ($row['RoleName'] === 'super_admin') ? 'super_admin' : 'employee';
+
+                        // ถ้าระบบของคุณยังไม่ได้ผูก employee ↔ company ให้ปล่อยเป็น null ไปก่อนได้
+                        if (!isset($_SESSION['company_id'])) {
+                            $_SESSION['company_id'] = null;
+                        }
+
                         $stmt->close();
                         $conn->close();
                         header("Location: dashboard.php");
@@ -168,219 +143,38 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         $message = "❌ รหัสผ่านไม่ถูกต้อง";
                     }
                 } else {
-                    // หากไม่พบทั้งลูกค้าและพนักงาน
-                    $message = "⚠️ ไม่พบ Username นี้ในระบบ";
+                    $message = "⚠️ ไม่พบผู้ใช้นี้ในระบบ";
                 }
-                $stmt->close();
+            } else {
+                $message = "❌ เกิดข้อผิดพลาดในการเตรียม Query (พนักงาน)";
             }
-        }
-        
-        if (isset($conn)) {
-            $conn->close();
         }
     }
 }
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="th">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>เข้าสู่ระบบ | CY Arena</title>
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Kanit:wght@700;800&display=swap" rel="stylesheet">
-<style>
-:root {
-  --primary: #2563eb;
-  --primary-dark: #1e40af;
-  --primary-light: #3b82f6;
-  --gray-100: #f5f5f4;
-  --gray-700: #44403c;
-  --gray-900: #1c1917;
-  --danger: #dc2626;
-  --spacing: 1.5rem;
-  --error: #dc2626; 
-}
-
-body {
-  margin: 0;
-  font-family: 'Sarabun', sans-serif;
-  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  color: var(--gray-900);
-  padding: 1.5rem; 
-  box-sizing: border-box;
-}
-
-/* ===== CARD ===== */
-.login-card {
-  background: #fff;
-  border-radius: 20px;
-  padding: 2.5rem 2rem;
-  max-width: 420px; 
-  min-width: 300px; 
-  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-  animation: fadeIn 0.7s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ===== LOGO ===== */
-.logo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1.8rem;
-}
-
-.logo img {
-  width: 220px;
-  max-width: 80%;
-  height: auto;
-  display: block;
-  margin: 0 auto 10px auto;
-  transition: transform 0.3s ease, filter 0.3s ease;
-}
-
-.logo img:hover {
-  transform: scale(1.05);
-  filter: drop-shadow(0 0 8px rgba(37,99,235,0.3));
-}
-
-/* ===== FORM ===== */
-h2 {
-  text-align: center;
-  font-weight: 800;
-  font-family: 'Kanit', sans-serif;
-  color: var(--gray-900);
-  margin-bottom: 1rem;
-}
-p.desc {
-  text-align: center;
-  color: var(--gray-700);
-  margin-bottom: 2rem;
-}
-.form-group {
-  margin-bottom: 1.25rem;
-}
-label {
-  display: block;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-input {
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid var(--gray-100);
-  border-radius: 12px;
-  font-size: 1rem;
-  transition: all 0.3s;
-  box-sizing: border-box; 
-}
-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
-  outline: none;
-}
-
-/* ===== BUTTON ===== */
-.btn {
-  width: 100%;
-  padding: 1rem;
-  font-weight: 800;
-  font-family: 'Kanit', sans-serif;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-size: 1.125rem;
-}
-.btn-primary {
-  background: linear-gradient(135deg, var(--primary), var(--primary-light));
-  color: white;
-  box-shadow: 0 4px 12px rgba(37,99,235,0.4);
-}
-.btn-primary:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(37,99,235,0.6);
-}
-
-/* ===== MESSAGE & FOOTER ===== */
-.message {
-  margin-top: 1rem;
-  color: var(--error);
-  text-align: center;
-  font-weight: 700;
-  padding: 0.75rem;
-  border-radius: 8px;
-  background-color: rgba(220, 38, 38, 0.08); 
-  border: 1px solid var(--danger);
-}
-.footer-text {
-  text-align: center;
-  margin-top: 1.75rem;
-  color: var(--gray-700);
-  font-weight: 600;
-}
-.footer-text a {
-  color: var(--primary);
-  text-decoration: none;
-  font-weight: 700;
-}
-.footer-text a:hover { text-decoration: underline; }
-
-@media (max-width: 480px) {
-  body { padding: 0; } 
-  .login-card { 
-      width: 100vw; 
-      max-width: none;
-      border-radius: 0; 
-      padding: 2rem 1rem;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-  }
-  .logo img { width: 160px; margin-bottom: 8px; }
-}
-</style>
+<meta charset="utf-8">
+<title>เข้าสู่ระบบ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
 </head>
 <body>
-
-<div class="login-card">
-  <div class="logo">
-    <img src="images/cy.png" alt="CY Arena Logo">
-  </div>
-
-  <h2>เข้าสู่ระบบ</h2>
-  <p class="desc">กรอกชื่อผู้ใช้และรหัสผ่านของคุณเพื่อเข้าสู่ระบบ</p>
-
-  <form method="POST">
-    <div class="form-group">
-      <label for="username">👤 ชื่อผู้ใช้</label>
-      <input type="text" name="username" id="username" required placeholder="กรอกชื่อผู้ใช้">
-    </div>
-    <div class="form-group">
-      <label for="password">🔒 รหัสผ่าน</label>
-      <input type="password" name="password" id="password" required placeholder="กรอกรหัสผ่าน">
-    </div>
-    <button type="submit" class="btn btn-primary">เข้าสู่ระบบ 🚀</button>
-  </form>
-
-  <?php if ($message): ?>
-    <div class="message"><?= htmlspecialchars($message) ?></div>
+<main class="container">
+  <h1>เข้าสู่ระบบ</h1>
+  <?php if (!empty($message)) : ?>
+    <article role="alert"><?php echo h($message); ?></article>
   <?php endif; ?>
-
-  <div class="footer-text">
-    ยังไม่มีบัญชี? <a href="register.php">สมัครสมาชิกฟรี</a>
-  </div>
-</div>
-
+  <form method="post" autocomplete="off">
+    <label>ชื่อผู้ใช้
+      <input name="username" required>
+    </label>
+    <label>รหัสผ่าน
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit">เข้าสู่ระบบ</button>
+  </form>
+</main>
 </body>
 </html>
