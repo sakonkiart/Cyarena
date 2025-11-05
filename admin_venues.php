@@ -23,12 +23,11 @@ if (!in_array($ROLE, ['admin','employee','super_admin'], true)) {
     exit;
 }
 
-include 'db_connect.php';
+/* ใช้ require_once กันประกาศซ้ำ */
+require_once __DIR__ . '/db_connect.php';
 
-/* >>> OWNER-SCOPE: เตรียมคอลัมน์เจ้าของสนาม (ทำครั้งเดียว) */
-include 'db_connect.php';
 
-/* ===== Schema guard: เพิ่มคอลัมน์/ดัชนีถ้ายังไม่มี (ไม่ใช้ IF NOT EXISTS) ===== */
+/* ===== Schema guard: เพิ่ม/ปรับคอลัมน์และดัชนีถ้ายังไม่มี (ไม่ใช้ IF NOT EXISTS) ===== */
 function colExists(mysqli $c, string $table, string $column): bool {
     $sql = "SELECT 1
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -55,30 +54,31 @@ function idxExists(mysqli $c, string $table, string $index): bool {
 }
 
 try {
+    // CreatedByUserID
     if (!colExists($conn, 'Tbl_Venue', 'CreatedByUserID')) {
         $conn->query("ALTER TABLE `Tbl_Venue` ADD COLUMN `CreatedByUserID` INT NULL");
     }
+
+    // CreatedByRole (ให้รองรับ 'admin' ด้วย)
     if (!colExists($conn, 'Tbl_Venue', 'CreatedByRole')) {
-        // ใช้ ENUM ตามที่ออกแบบ
         $conn->query("ALTER TABLE `Tbl_Venue`
-                      ADD COLUMN `CreatedByRole` ENUM('super_admin','employee') NULL");
+                      ADD COLUMN `CreatedByRole` ENUM('super_admin','admin','employee') NULL");
+    } else {
+        // บังคับปรับ ENUM ให้มีค่าครบ (กันฐานเก่าที่ยังไม่มี 'admin')
+        $conn->query("ALTER TABLE `Tbl_Venue`
+                      MODIFY COLUMN `CreatedByRole` ENUM('super_admin','admin','employee') NULL");
     }
+
+    // index
     if (!idxExists($conn, 'Tbl_Venue', 'idx_creator')) {
         $conn->query("ALTER TABLE `Tbl_Venue`
                       ADD INDEX `idx_creator` (`CreatedByUserID`,`CreatedByRole`)");
     }
 } catch (Throwable $e) {
-    // ไม่ให้เด้งหน้า – บันทึกไว้เฉยๆ
     error_log('[admin_venues schema guard] '.$e->getMessage());
 }
 /* ===== END Schema guard ===== */
 
-@$conn->query("
-  ALTER TABLE Tbl_Venue
-  ADD COLUMN IF NOT EXISTS CreatedByUserID INT NULL,
-  ADD COLUMN IF NOT EXISTS CreatedByRole ENUM('super_admin','admin','employee') NULL,
-  ADD INDEX IF NOT EXISTS idx_creator (CreatedByUserID, CreatedByRole)
-");
 
 /* Fetch venue types for dropdown (ไม่จำกัดประเภทแล้ว) */
 $types = [];
@@ -99,7 +99,8 @@ if (isset($_GET['id']) && ctype_digit($_GET['id'])) {
         $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ?");
         $stmt->bind_param("i", $vid);
     } else {
-        $stmt = $conn->prepare("SELECT * FROM Tbl_Venue WHERE VenueID = ? AND CreatedByUserID = ? AND CreatedByRole = ?");
+        $stmt = $conn->prepare("SELECT * FROM Tbl_Venue
+                                WHERE VenueID = ? AND CreatedByUserID = ? AND CreatedByRole = ?");
         $stmt->bind_param("iis", $vid, $ME_ID, $ROLE);
     }
     $stmt->execute();
@@ -133,7 +134,7 @@ if ($search !== '') {
                                 WHERE (v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?)
                                   AND v.CreatedByUserID = ? AND v.CreatedByRole = ?
                                 ORDER BY v.VenueID DESC");
-        // ✔ แก้เป็น sssis (เดิมพิมพ์ผิดเป็น sssIs)
+        // 👇 types: s s s i s
         $stmt->bind_param("sssis", $like, $like, $like, $ME_ID, $ROLE);
     }
     $stmt->execute();
@@ -212,7 +213,6 @@ textarea.form-control-modern{resize:vertical}
 .btn-edit{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff}
 .btn-edit:hover{transform:translateY(-2px);box-shadow:0 5px 15px rgba(102,126,234,.4);color:#fff}
 .btn-status-warning{background:linear-gradient(135deg,#ed8936 0%,#dd6b20 100%);color:#fff}
-.btn-status-warning:hover{transform:translateY(-2px);box-shadow:0 5px 15px rgba(237,137,54,.4);color:#fff}
 .btn-status-success{background:linear-gradient(135deg,#48bb78 0%,#38a169 100%);color:#fff}
 .btn-status-success:hover{transform:translateY(-2px);box-shadow:0 5px 15px rgba(72,187,120,.4);color:#fff}
 .btn-delete{background:#fff;color:#f56565;border:2px solid #f56565}
