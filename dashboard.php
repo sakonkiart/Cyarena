@@ -10,18 +10,15 @@ include 'db_connect.php';
 $userName = $_SESSION['user_name'];
 $role     = $_SESSION['role'] ?? 'customer';
 
-/* ===== ADD: role helpers ===== */
+/* ===== Role helpers (FIXED) ===== */
 $isSuper    = ($role === 'super_admin');
-$isAdmin    = ($role === 'type_admin');
-$isEmployee = ($role === 'employee');          // <<< ADD
-$isStaffUIHide = ($isAdmin || $isEmployee);    // <<< ADD: ซ่อนรายการสนามสำหรับ admin/employee
-$isAdmin    = in_array($role, ['admin','type_admin'], true);
-
+$isAdmin    = in_array($role, ['admin','type_admin'], true);   // แก้ให้เหลืออันเดียว
+$isEmployee = ($role === 'employee');
+$isStaffUIHide = ($isAdmin || $isEmployee);                    // admin/employee ไม่เห็นลิสต์สนามหน้าแดชบอร์ด
 
 // Avatar
 $avatarPath  = $_SESSION['avatar_path'] ?? '';
 $avatarLocal = 'assets/avatar-default.png';
-
 function _exists_rel($rel){ return is_file(__DIR__ . '/' . ltrim($rel, '/')); }
 
 if ($avatarPath && _exists_rel($avatarPath)) {
@@ -34,9 +31,9 @@ if ($avatarPath && _exists_rel($avatarPath)) {
   );
 }
 
-// ดึงรายการสนาม (ลูกค้า/ซูเปอร์แอดมินเห็นปกติ, admin/employee ไม่ต้องใช้ก็ได้)
+// ดึงรายการสนาม (ลูกค้า/ซูเปอร์แอดมินเห็นปกติ, admin/employee ซ่อน)
 $venues = [];
-if (!$isStaffUIHide) { // <<< CHANGE: ดึงเฉพาะเมื่อไม่ใช่ admin/employee
+if (!$isStaffUIHide) {
   $sql = "
   SELECT 
       v.*,
@@ -73,7 +70,7 @@ if (!$isStaffUIHide) { // <<< CHANGE: ดึงเฉพาะเมื่อไ
   }
 }
 
-// --- compute readyCount (available venues) robust against timezone ---
+// --- compute readyCount ---
 @$conn->query("SET time_zone = '+07:00'");
 $readyCount = 0;
 $readySql = "
@@ -93,7 +90,7 @@ if ($__rc = $conn->query($readySql)) {
     $readyCount = (int) ((($__rc->fetch_assoc())['c'] ?? 0));
 }
 
-// ✅ นับจำนวนโปรโมชั่นที่ใช้งานได้สำหรับทุกคน
+// ✅ โปรโมชั่นทั้งหมด
 $activePromoCount = 0;
 $promoSql = "SELECT COUNT(*) as count FROM Tbl_Promotion WHERE NOW() BETWEEN StartDate AND EndDate";
 $promoRes = $conn->query($promoSql);
@@ -112,12 +109,11 @@ $conn->close();
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-/* …………… (สไตล์ทั้งหมดคงเดิม) …………… */
-<?php /* เพื่อลดความยาว ที่เหลือคือ CSS เดิมทั้งหมดของคุณ ไม่ได้แก้ไขใด ๆ */ ?>
 <?php echo preg_replace('/^/m','',<<<'CSS'
 :root{--primary:#2563eb;--primary-dark:#1e40af;--primary-light:#3b82f6;--secondary:#eab308;--accent:#f97316;--danger:#dc2626;--dark:#1c1917;--white:#ffffff;--gray-50:#fafaf9;--gray-100:#f5f5f4;--gray-200:#e7e5e4;--gray-700:#44403c;--gray-900:#1c1917;--turf-green:#16a34a;--court-orange:#f97316;--field-blue:#0ea5e9}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:var(--gray-900);line-height:1.6}
+/* TOPBAR/HEADER/NAV… (เหมือนเดิมทั้งหมด) */
 .top-bar{background:linear-gradient(135deg,var(--primary-dark) 0%,var(--primary) 100%);color:#fff;padding:.5rem 0;font-size:.875rem}
 .top-bar-container{max-width:1400px;margin:0 auto;padding:0 2rem;display:flex;justify-content:space-between;align-items:center}
 .top-bar-info{display:flex;gap:2rem}
@@ -151,6 +147,7 @@ body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:va
 .dropdown-item{display:flex;align-items:center;gap:.75rem;padding:.875rem 1.25rem;color:var(--gray-900);text-decoration:none;border-bottom:1px solid var(--gray-200);transition:.2s;font-weight:600}
 .dropdown-item:hover{background:var(--gray-50);color:var(--primary);padding-left:1.5rem}
 .dropdown-item:last-child{border-bottom:none;color:var(--danger)}
+/* PROMO/HERO/QUICK ACTIONS/FILTERS/VENUES/FOOTER เหมือนเดิม (คงไว้) */
 .promo-bar{background:linear-gradient(90deg,var(--secondary) 0%,var(--accent) 50%,var(--secondary) 100%);background-size:200% 100%;animation:gradientShift 4s ease-in-out infinite;color:#fff;padding:1rem 0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)}
 @keyframes gradientShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 .promo-content{display:flex;white-space:nowrap}
@@ -176,6 +173,7 @@ body{font-family:'Sarabun','Kanit',sans-serif;background:var(--gray-50);color:va
 .action-icon{width:80px;height:80px;margin:0 auto 1rem;background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:2.5rem;box-shadow:0 8px 16px rgba(37,99,235,.3)}
 .action-title{font-size:1.25rem;font-weight:800;color:var(--gray-900);margin-bottom:.5rem}
 .action-desc{font-size:.9375rem;color:var(--gray-700);font-weight:500}
+/* FILTERS / VENUE CARDS / FOOTER / RESPONSIVE / EMPTY STATE (คงเดิม) */
 .filters-section,.venues-section{max-width:1400px;margin:0 auto 3rem;padding:0 2rem}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem}
 .section-title{font-family:'Kanit',sans-serif;font-size:2rem;font-weight:900;color:var(--gray-900);display:flex;align-items:center;gap:.75rem}
@@ -264,23 +262,22 @@ CSS
         <a href="bookings_calendar_public.php" class="nav-link">📅 ปฏิทินสนาม</a>
         <a href="my_reviews.php" class="nav-link">⭐ รีวิวของฉัน</a>
         <a href="promotion.php" class="nav-link promo-link">
-          🎁 โปรโมชั่น
-          <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?php echo $activePromoCount; ?></span><?php endif; ?>
+          🎁 โปรโมชั่น <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?= $activePromoCount ?></span><?php endif; ?>
         </a>
       <?php elseif ($isAdmin || $isEmployee): ?>
         <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>
         <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
         <a href="promotion.php" class="nav-link promo-link">
-          🎁 โปรโมชั่น
-          <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?php echo $activePromoCount; ?></span><?php endif; ?>
+          🎁 โปรโมชั่น <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?= $activePromoCount ?></span><?php endif; ?>
         </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
       <?php elseif ($isSuper): ?>
+        <a href="manage_bookings.php" class="nav-link">🛠️ จัดการจอง</a>          <!-- เพิ่มให้ super_admin -->
+        <a href="admin_venues.php" class="nav-link">🏟️ จัดการสนาม</a>            <!-- เพิ่มให้ super_admin -->
         <a href="bookings_calendar.php" class="nav-link">📅 ปฏิทิน</a>
         <a href="promotion_manage.php" class="nav-link promo-link">
-          🎁 จัดการโปรโมชั่น
-          <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?php echo $activePromoCount; ?></span><?php endif; ?>
+          🎁 จัดการโปรโมชั่น <?php if ($activePromoCount > 0): ?><span class="promo-badge"><?= $activePromoCount ?></span><?php endif; ?>
         </a>
         <a href="report.php" class="nav-link">📊 รายงาน</a>
         <a href="super_admin_grant.php" class="nav-link">👑 ให้สิทธิ์ผู้ใช้</a>
@@ -290,12 +287,12 @@ CSS
     <div class="user-section">
       <div class="user-menu">
         <div class="user-trigger">
-          <img src="<?php echo htmlspecialchars($avatarSrc); ?>" alt="avatar" class="user-avatar">
-          <span class="user-name"><?php echo htmlspecialchars($userName); ?></span>
+          <img src="<?= htmlspecialchars($avatarSrc); ?>" alt="avatar" class="user-avatar">
+          <span class="user-name"><?= htmlspecialchars($userName); ?></span>
         </div>
         <div class="user-dropdown">
           <div class="dropdown-header">
-            <div class="dropdown-header-name"><?php echo htmlspecialchars($userName); ?></div>
+            <div class="dropdown-header-name"><?= htmlspecialchars($userName); ?></div>
             <?php if ($isSuper): ?>
               <div class="dropdown-header-role">👑 Super Admin</div>
             <?php elseif ($isAdmin || $isEmployee): ?>
@@ -341,13 +338,14 @@ CSS
     <div class="action-card" onclick="window.location.href='#venues'">
       <div class="action-icon">🏟️</div>
       <div class="action-title">สนามทั้งหมด</div>
-      <div class="action-desc"><?php echo $isStaffUIHide ? '—' : count($venues).' สนาม'; ?></div>
+      <div class="action-desc"><?= $isStaffUIHide ? '—' : count($venues).' สนาม'; ?></div>
     </div>
     <div class="action-card" onclick="window.location.href='#venues'">
       <div class="action-icon" style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);">✅</div>
       <div class="action-title">พร้อมให้บริการ</div>
-      <div class="action-desc"><?php echo $readyCount; ?> สนาม</div>
+      <div class="action-desc"><?= $readyCount; ?> สนาม</div>
     </div>
+
     <?php if ($role === 'customer'): ?>
       <div class="action-card" onclick="window.location.href='bookings_calendar_public.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
@@ -362,8 +360,9 @@ CSS
       <div class="action-card" onclick="window.location.href='promotion.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
         <div class="action-title">โปรโมชั่นพิเศษ</div>
-        <div class="action-desc"><?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "ดูโปรโมชั่นทั้งหมด"; ?></div>
+        <div class="action-desc"><?= $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "ดูโปรโมชั่นทั้งหมด"; ?></div>
       </div>
+
     <?php elseif ($isAdmin || $isEmployee): ?>
       <div class="action-card" onclick="window.location.href='bookings_calendar.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
@@ -380,16 +379,23 @@ CSS
         <div class="action-title">จัดการสนามของฉัน</div>
         <div class="action-desc">สร้าง/แก้ไข สนามที่คุณสร้าง</div>
       </div>
+
     <?php elseif ($isSuper): ?>
-      <div class="action-card" onclick="window.location.href='bookings_calendar.php'">
-        <div class="action-icon" style="background: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);">📅</div>
-        <div class="action-title">ปฏิทินการจอง</div>
-        <div class="action-desc">ดูตารางการจอง</div>
+      <!-- เพิ่มการ์ดสำหรับ super_admin -->
+      <div class="action-card" onclick="window.location.href='manage_bookings.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">🛠️</div>
+        <div class="action-title">จัดการการจอง</div>
+        <div class="action-desc">ดูและอนุมัติการจองทั้งหมด</div>
+      </div>
+      <div class="action-card" onclick="window.location.href='admin_venues.php'">
+        <div class="action-icon" style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);">🏟️</div>
+        <div class="action-title">จัดการสนาม</div>
+        <div class="action-desc">สร้าง/แก้ไข/ลบ สนามทั้งหมด</div>
       </div>
       <div class="action-card" onclick="window.location.href='promotion_manage.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);">🎁</div>
         <div class="action-title">จัดการโปรโมชั่น</div>
-        <div class="action-desc"><?php echo $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "สร้างโปรโมชั่นใหม่"; ?></div>
+        <div class="action-desc"><?= $activePromoCount > 0 ? "$activePromoCount โปรโมชั่นใช้งานได้" : "สร้างโปรใหม่"; ?></div>
       </div>
       <div class="action-card" onclick="window.location.href='report.php'">
         <div class="action-icon" style="background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);">📊</div>
@@ -406,26 +412,24 @@ CSS
 </section>
 
 <?php if ($isStaffUIHide): ?>
-  <!-- ========== STAFF VIEW (ซ่อนสนามทั้งหมด) ========== -->
+  <!-- STAFF VIEW: ซ่อนรายการสนาม -->
   <section class="venues-section" id="venues">
-    <div class="section-header">
-      <h2 class="section-title">โหมดผู้ดูแล</h2>
-    </div>
+    <div class="section-header"><h2 class="section-title">โหมดผู้ดูแล</h2></div>
     <div class="empty-state">
       <div class="empty-state-icon">🛡️</div>
       <div class="empty-state-title">หน้านี้ซ่อนรายการสนามสำหรับผู้ดูแล</div>
       <div class="empty-state-text" style="margin-bottom:1.25rem">
-        คุณสามารถจัดการเฉพาะ <strong>สนามที่ตัวเองสร้าง</strong> และดู/อนุมัติการจองได้จากปุ่มด้านล่าง
+        เข้าจัดการ <strong>การจอง</strong> และ <strong>สนามของคุณ</strong> ได้ที่ปุ่มด้านล่าง
       </div>
       <div style="display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap;">
         <a href="manage_bookings.php" class="btn btn-primary" style="min-width:220px">🗂️ จัดการการจอง</a>
-        <a href="admin_venues.php" class="btn btn-secondary" style="min-width:220px">🏟️ จัดการสนามของฉัน (สร้างสนาม)</a>
+        <a href="admin_venues.php" class="btn btn-secondary" style="min-width:220px">🏟️ จัดการสนามของฉัน</a>
       </div>
     </div>
   </section>
 
 <?php else: ?>
-  <!-- ========== FILTERS (ลูกค้า/ซูเปอร์แอดมินเท่านั้น) ========== -->
+  <!-- FILTERS (ลูกค้า/ซูเปอร์แอดมิน) -->
   <section class="filters-section" id="venues">
     <div class="section-header">
       <h2 class="section-title">เลือกประเภทสนาม</h2>
@@ -447,12 +451,9 @@ CSS
     </div>
   </section>
 
-  <!-- ========== VENUES (ลูกค้า/ซูเปอร์แอดมิน) ========== -->
+  <!-- VENUES (ลูกค้า/ซูเปอร์แอดมิน) -->
   <section class="venues-section">
-    <div class="section-header">
-      <h2 class="section-title">สนามแนะนำ</h2>
-    </div>
-    
+    <div class="section-header"><h2 class="section-title">สนามแนะนำ</h2></div>
     <div class="venue-grid" id="venueGrid">
       <?php if (empty($venues)): ?>
         <div class="empty-state">
@@ -460,32 +461,30 @@ CSS
           <div class="empty-state-title">ไม่พบสนามกีฬา</div>
           <div class="empty-state-text">ขออภัย ไม่มีสนามกีฬาในระบบในขณะนี้</div>
         </div>
-      <?php else: foreach ($venues as $venue): 
+      <?php else: foreach ($venues as $venue):
         $st = $venue['StatusNow'] ?? 'available';
         $disableBooking = in_array($st, ['unavailable','maintenance','closed']);
         $statusMap = [
           'available' => ['label' => '🟢 ว่าง', 'class' => 'available'],
-          'upcoming' => ['label' => '🟡 มีจอง', 'class' => 'upcoming'],
-          'unavailable' => ['label' => '🔴 ไม่ว่าง', 'class' => 'unavailable'],
-          'maintenance' => ['label' => '🛠️ ปรับปรุง', 'class' => 'maintenance'],
-          'closed' => ['label' => '🚫 ปิด', 'class' => 'closed']
+          'upcoming'  => ['label' => '🟡 มีจอง', 'class' => 'upcoming'],
+          'unavailable'=>['label' => '🔴 ไม่ว่าง', 'class' => 'unavailable'],
+          'maintenance'=>['label' => '🛠️ ปรับปรุง', 'class' => 'maintenance'],
+          'closed'     => ['label' => '🚫 ปิด', 'class' => 'closed']
         ];
         $statusInfo = $statusMap[$st] ?? ['label' => 'ไม่ทราบ', 'class' => 'unavailable'];
       ?>
-        <div class="venue-card" data-type="<?php echo htmlspecialchars($venue['TypeName']); ?>">
+        <div class="venue-card" data-type="<?= htmlspecialchars($venue['TypeName']); ?>">
           <div class="venue-image-wrapper">
-            <a href="venue_detail.php?venue_id=<?php echo $venue['VenueID']; ?>">
-              <img src="<?php echo htmlspecialchars($venue['ImageURL'] ?: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=400&h=300&fit=crop'); ?>" 
-                   alt="<?php echo htmlspecialchars($venue['VenueName']); ?>" 
-                   class="venue-image">
+            <a href="venue_detail.php?venue_id=<?= $venue['VenueID']; ?>">
+              <img src="<?= htmlspecialchars($venue['ImageURL'] ?: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=400&h=300&fit=crop'); ?>"
+                   alt="<?= htmlspecialchars($venue['VenueName']); ?>" class="venue-image">
             </a>
-            <span class="venue-badge <?php echo $statusInfo['class']; ?>"><?php echo $statusInfo['label']; ?></span>
-            <span class="venue-type-badge"><?php echo htmlspecialchars($venue['TypeName']); ?></span>
+            <span class="venue-badge <?= $statusInfo['class']; ?>"><?= $statusInfo['label']; ?></span>
+            <span class="venue-type-badge"><?= htmlspecialchars($venue['TypeName']); ?></span>
           </div>
-          
           <div class="venue-content">
-            <a href="venue_detail.php?venue_id=<?php echo $venue['VenueID']; ?>" class="venue-name">
-              <?php echo htmlspecialchars($venue['VenueName']); ?>
+            <a href="venue_detail.php?venue_id=<?= $venue['VenueID']; ?>" class="venue-name">
+              <?= htmlspecialchars($venue['VenueName']); ?>
             </a>
             <div class="venue-info">
               <div class="info-row"><span class="info-icon">🕐</span>
@@ -503,19 +502,19 @@ CSS
             </div>
             <div class="venue-price">
               <div class="price-label">ราคาเริ่มต้น</div>
-              <div class="price-value">฿<?php echo number_format($venue['PricePerHour'], 0); ?> <span style="font-size:1rem;font-weight:600;">/ชม.</span></div>
+              <div class="price-value">฿<?= number_format($venue['PricePerHour'], 0); ?> <span style="font-size:1rem;font-weight:600;">/ชม.</span></div>
             </div>
             <div class="venue-rating">
               <span class="stars">
                 <?php $rating = (int)$venue['AvgRating']; echo str_repeat("⭐", min(5, $rating)); if ($rating < 5) echo str_repeat("☆", 5 - $rating); ?>
               </span>
               <span class="rating-text">
-                <?php echo $venue['AvgRating'] > 0 ? "{$venue['AvgRating']}/5 ({$venue['ReviewCount']} รีวิว)" : "ยังไม่มีรีวิว"; ?>
+                <?= $venue['AvgRating'] > 0 ? "{$venue['AvgRating']}/5 ({$venue['ReviewCount']} รีวิว)" : "ยังไม่มีรีวิว"; ?>
               </span>
             </div>
             <div class="venue-actions">
-              <a href="venue_detail.php?venue_id=<?php echo $venue['VenueID']; ?>" class="btn btn-secondary">📋 ดูรายละเอียด</a>
-              <a href="<?php echo $disableBooking ? '#' : 'booking.php?venue_id='.$venue['VenueID']; ?>" class="btn btn-primary<?php echo $disableBooking ? ' disabled' : ''; ?>">🎯 จองทันที</a>
+              <a href="venue_detail.php?venue_id=<?= $venue['VenueID']; ?>" class="btn btn-secondary">📋 ดูรายละเอียด</a>
+              <a href="<?= $disableBooking ? '#' : 'booking.php?venue_id='.$venue['VenueID']; ?>" class="btn btn-primary<?= $disableBooking ? ' disabled' : ''; ?>">🎯 จองทันที</a>
             </div>
           </div>
         </div>
@@ -568,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (promoText) { const t = promoText.textContent; promoText.textContent = t + '   ' + t; }
 });
 
-// Search + Filter (ทำงานเฉพาะเมื่อมีการ์ดสนาม)
+// Search + Filter (เฉพาะเมื่อมีการ์ดสนาม)
 const venueGrid = document.getElementById('venueGrid');
 if (venueGrid) {
   const searchBox = document.getElementById('searchBox');
