@@ -2,6 +2,7 @@
 // สมมติว่าไฟล์ db_connect.php มีการเชื่อมต่อ $conn แล้ว
 include 'db_connect.php';
 $message = "";
+$showSuccessModal = false; // ✅ ธงไว้เปิดโมดัลหลังสมัครสำเร็จ
 
 /* ---------- ฟังก์ชันตรวจสอบซ้ำ ---------- */
 function checkDuplicate($conn, $field, $value, $fieldNameDisplay) {
@@ -49,11 +50,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $stmt->bind_param("ssssss", $firstname, $lastname, $email, $phone, $username, $password_hashed);
 
                 if ($stmt->execute()) {
-                    // ✅ สมัครสำเร็จ -> เด้งไปหน้าเข้าสู่ระบบ
-                    $stmt->close();
-                    $conn->close();
-                    header("Location: login.php?registered=1");
-                    exit;
+                    // ✅ สมัครสำเร็จ -> แสดงโมดัลให้กด OK ก่อน แล้วค่อยเด้งไปหน้าเข้าสู่ระบบ
+                    $showSuccessModal = true;
+                    $message = ""; // ซ่อนกล่องข้อความธรรมดา
+                } else {
+                    $message = "❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล";
                 }
                 $stmt->close();
             } catch (mysqli_sql_exception $e) {
@@ -97,9 +98,21 @@ input.error-input{border-color:var(--danger)}
 .footer-text a{color:var(--primary);text-decoration:none;font-weight:700}
 .footer-text a:hover{text-decoration:underline}
 @media (max-width:480px){body{padding:0}.register-card{border-radius:0;min-height:100vh;display:flex;flex-direction:column;justify-content:center}}
+
+/* ===== Success Modal (ใหม่) ===== */
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999}
+.modal{background:#fff;border-radius:16px;max-width:440px;width:100%;box-shadow:0 12px 32px rgba(0,0,0,.2);animation:fadeIn .25s ease-out}
+.modal-header{padding:16px 20px;border-bottom:1px solid #eef2f7;display:flex;align-items:center;gap:10px}
+.modal-icon{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px}
+.modal-title{font-family:'Kanit',sans-serif;font-weight:800;font-size:1.15rem}
+.modal-body{padding:18px 20px;color:#374151;font-weight:600}
+.modal-actions{padding:14px 20px;border-top:1px solid #eef2f7;display:flex;justify-content:flex-end;gap:8px}
+.btn-ok{background:linear-gradient(135deg,var(--primary),var(--primary-light));color:#fff;border:none;border-radius:10px;padding:.7rem 1.1rem;font-weight:800;cursor:pointer}
+.btn-ok:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(37,99,235,.35)}
 </style>
 </head>
 <body>
+
 <div class="register-card">
   <div class="logo">
     <div class="logo-icon">⚽</div>
@@ -152,13 +165,30 @@ input.error-input{border-color:var(--danger)}
   </div>
 </div>
 
+<!-- ✅ Success Modal -->
+<div id="successModal" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-icon">✅</div>
+      <div class="modal-title">สมัครสมาชิกสำเร็จ</div>
+    </div>
+    <div class="modal-body">
+      บัญชีของคุณถูกสร้างเรียบร้อยแล้ว<br>
+      กด <strong>OK</strong> เพื่อไปหน้าเข้าสู่ระบบ
+    </div>
+    <div class="modal-actions">
+      <button id="okGoLogin" class="btn-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ตรวจสอบเบอร์โทรศัพท์แบบ Real-time
 const phoneInput = document.getElementById('phone');
 const phoneError = document.getElementById('phoneError');
 const registerForm = document.getElementById('registerForm');
 
-phoneInput.addEventListener('input', function() {
+phoneInput.addEventListener('input', function () {
   this.value = this.value.replace(/[^0-9]/g, '');
   if (this.value.length > 0 && this.value.length !== 10) {
     phoneError.style.display = 'block';
@@ -169,8 +199,7 @@ phoneInput.addEventListener('input', function() {
   }
 });
 
-// ตรวจสอบก่อน Submit
-registerForm.addEventListener('submit', function(e) {
+registerForm.addEventListener('submit', function (e) {
   const phone = phoneInput.value;
   if (!/^[0-9]{10}$/.test(phone)) {
     e.preventDefault();
@@ -178,14 +207,24 @@ registerForm.addEventListener('submit', function(e) {
     phoneInput.classList.add('error-input');
     phoneInput.focus();
     alert('❌ กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง\nต้องเป็นตัวเลข 10 หลักเท่านั้น');
-    return false;
   }
 });
 
-// ป้องกันการวางข้อความที่ไม่ใช่ตัวเลข
-phoneInput.addEventListener('paste', function() {
+// ป้องกันการวางที่ไม่ใช่ตัวเลข
+phoneInput.addEventListener('paste', function () {
   setTimeout(() => { this.value = this.value.replace(/[^0-9]/g, ''); }, 10);
 });
+
+// ✅ เปิดโมดัลถ้าสมัครสำเร็จ
+<?php if ($showSuccessModal): ?>
+  const backdrop = document.getElementById('successModal');
+  const okBtn = document.getElementById('okGoLogin');
+  backdrop.style.display = 'flex';
+  okBtn.addEventListener('click', () => {
+    window.location.href = 'login.php?registered=1';
+  });
+<?php endif; ?>
 </script>
+
 </body>
 </html>
