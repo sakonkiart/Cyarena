@@ -1,5 +1,5 @@
 <?php
-// venue_save.php — Save/Update venue (รองรับ type_admin แบบจำกัดประเภทสนาม)
+// venue_save.php — Save/Update venue (รองรับ type_admin + บันทึกผู้สร้างสนาม)
 
 session_start();
 
@@ -49,6 +49,16 @@ $TimeClose    = trim($_POST['TimeClose'] ?? '');
 $Address      = trim($_POST['Address'] ?? '');
 $Description  = trim($_POST['Description'] ?? '');
 $Status       = trim($_POST['Status'] ?? 'available');
+
+/* >>> ADD: ตัวตนผู้สร้างที่ต้อง “บันทึกลงฐาน” */
+$CREATOR_USER_ID = (int)($_SESSION['user_id'] ?? 0);
+/* เก็บ Role ลง DB ให้สอดคล้องกับหน้าที่ใช้กรอง:
+   - type_admin เก็บเป็น 'employee' (เหมือนหน้าอื่น ๆ)
+   - admin/super_admin เก็บตามจริง
+   - กรณีอื่น fallback เป็น 'employee' */
+$CREATOR_ROLE_DB = ($ROLE === 'type_admin') ? 'employee'
+                 : (($ROLE === 'super_admin') ? 'super_admin'
+                 : (($ROLE === 'admin') ? 'admin' : 'employee'));
 
 /* >>> ADD: บังคับสิทธิ์ของ type_admin — ต้องมีประเภทสนามสำหรับสิทธิ์ และห้ามออกนอกประเภทนั้น */
 if ($IS_TYPE_ADMIN) {
@@ -110,7 +120,7 @@ if (!empty($_FILES['ImageFile']['name']) && is_uploaded_file($_FILES['ImageFile'
 
 /* ===== INSERT / UPDATE ===== */
 
-/* กรณี UPDATE: ต้องตรวจสิทธิ์ว่า type_admin แก้เฉพาะสนามในประเภทที่ตัวเองดูแลเท่านั้น */
+/* กรณี UPDATE: ตรวจสิทธิ์พื้นฐาน + (ถ้า type_admin) ต้องอยู่ในประเภทที่ตัวเองดูแล */
 if ($VenueID > 0) {
     $q = "SELECT VenueID, VenueTypeID, ImageURL FROM Tbl_Venue WHERE VenueID = ?";
     if (!$st = $conn->prepare($q)) {
@@ -174,14 +184,16 @@ if ($VenueID > 0) {
     exit;
 }
 
-/* กรณี INSERT: type_admin จะถูกบังคับให้ใช้ประเภทที่ได้รับสิทธิ์อยู่แล้ว */
+/* กรณี INSERT */
+/* >>> ADD: บันทึก CreatedByUserID / CreatedByRole ให้แน่ใจว่าหน้า admin_venues.php กรองเจอ */
 $ImageURLFinal = $ImageURLNew; // สำหรับ insert ถ้าไม่อัปโหลดก็ปล่อยว่างได้
 $sql = "INSERT INTO Tbl_Venue
-        (VenueName, VenueTypeID, Description, PricePerHour, TimeOpen, TimeClose, Address, Status, ImageURL)
-        VALUES (?,?,?,?,?,?,?,?,?)";
+        (VenueName, VenueTypeID, Description, PricePerHour, TimeOpen, TimeClose, Address, Status, ImageURL,
+         CreatedByUserID, CreatedByRole)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)";
 if ($stmt = $conn->prepare($sql)) {
     $stmt->bind_param(
-        "sisdsssss",
+        "sisdsssssis",
         $VenueName,
         $VenueTypeID,
         $Description,
@@ -190,7 +202,9 @@ if ($stmt = $conn->prepare($sql)) {
         $TimeClose,
         $Address,
         $Status,
-        $ImageURLFinal
+        $ImageURLFinal,
+        $CREATOR_USER_ID,
+        $CREATOR_ROLE_DB
     );
     if ($stmt->execute()) {
         $newId = $conn->insert_id;
