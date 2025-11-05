@@ -9,7 +9,7 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 
-/* >>> OWNER-SCOPE: ตรวจสอบสิทธิ์ (employee หรือ super_admin) */
+/* >>> OWNER-SCOPE: ตรวจสอบสิทธิ์ (admin/employee หรือ super_admin) */
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
@@ -18,7 +18,7 @@ $ME_ID    = (int)($_SESSION['user_id'] ?? 0);
 $ROLE     = (string)($_SESSION['role'] ?? '');
 $IS_SUPER = ($ROLE === 'super_admin');
 
-if (!in_array($ROLE, ['employee', 'super_admin'], true)) {
+if (!in_array($ROLE, ['admin','employee','super_admin'], true)) {
     echo "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ คุณไม่มีสิทธิ์เข้าถึงหน้านี้</h2>";
     exit;
 }
@@ -29,7 +29,7 @@ include 'db_connect.php';
 @$conn->query("
   ALTER TABLE Tbl_Venue
   ADD COLUMN IF NOT EXISTS CreatedByUserID INT NULL,
-  ADD COLUMN IF NOT EXISTS CreatedByRole ENUM('super_admin','employee') NULL,
+  ADD COLUMN IF NOT EXISTS CreatedByRole ENUM('super_admin','admin','employee') NULL,
   ADD INDEX IF NOT EXISTS idx_creator (CreatedByUserID, CreatedByRole)
 ");
 
@@ -86,7 +86,8 @@ if ($search !== '') {
                                 WHERE (v.VenueName LIKE ? OR t.TypeName LIKE ? OR v.Status LIKE ?)
                                   AND v.CreatedByUserID = ? AND v.CreatedByRole = ?
                                 ORDER BY v.VenueID DESC");
-        $stmt->bind_param("sssIs", $like, $like, $like, $ME_ID, $ROLE);
+        // ✔ แก้เป็น sssis (เดิมพิมพ์ผิดเป็น sssIs)
+        $stmt->bind_param("sssis", $like, $like, $like, $ME_ID, $ROLE);
     }
     $stmt->execute();
     $venues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
