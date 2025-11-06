@@ -112,7 +112,7 @@ function render_booking_result_ui(array $opt = []) {
         transform: translateY(30px);
       }
       to {
-        opacity: 1;
+        opacity: 1);
         transform: translateY(0);
       }
     }
@@ -586,6 +586,16 @@ if (!$openDT || !$closeDT) {
         'back_url'=>$back
     ]);
 }
+
+/* ✅ เพิ่มเฉพาะส่วนที่ต้องแก้: รองรับปิดเที่ยงคืน/ข้ามวัน
+   - ถ้า TimeClose เป็น 00:00:00 ให้ถือเป็น 24:00 ของวันนั้น (เลื่อนไปวันถัดไป 00:00)
+   - หรือถ้าเวลาปิด <= เวลาเปิด (เช่น เปิด 19:00 ปิด 01:00) ให้ถือว่าปิดวันถัดไป */
+if (isset($venueRow['TimeClose']) && $venueRow['TimeClose'] === '00:00:00') {
+    $closeDT->modify('+1 day');
+} elseif ($closeDT <= $openDT) {
+    $closeDT->modify('+1 day');
+}
+
 if ($startDT < $openDT || $endDT > $closeDT) {
     render_booking_result_ui([
         'status'=>'error','title'=>'นอกเวลาให้บริการ',
@@ -675,7 +685,7 @@ if ($custOverlap) {
         'title'    => 'คุณมีการจองช่วงเวลานี้อยู่แล้ว (สนามเดียวกัน)',
         'message'  => 'ไม่สามารถจองทับเวลากับการจองเดิมในสนามเดียวกันได้',
         'conflicts'=> $conflictRows,
-        'back_url' => $back,
+        'back_url'=>$back,
         'calendar_url' => 'bookings_calendar.php?venue_id='.$venue_id
     ]);
 }
