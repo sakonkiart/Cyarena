@@ -1,9 +1,9 @@
 <?php
-// reminder_trigger_xyz123.php (final, patched)
+// reminder_trigger_xyz123.php (final, 1h reminder + dynamic customer email)
 session_start();
 
 /* ---------- SECURITY TOKEN ---------- */
-$SECRET_TOKEN = "your_ultra_secret_cron_key_98765";
+$SECRET_TOKEN = "your_ultra_secret_cron_key_98765"; // <-- ปรับให้เป็นค่า Token ของคุณ
 if (!isset($_GET['token']) || $_GET['token'] !== $SECRET_TOKEN) {
   http_response_code(403);
   die("Access Denied: Invalid Token.");
@@ -50,19 +50,25 @@ ensureIndex ($conn, 'Tbl_Booking', 'idx_booking_1h',
 
 /* ---------- MAILER ---------- */
 function sendEmail($toEmail, $toName, $subject, $html) {
+  // ป้องกันอีเมลว่าง/ไม่ถูกต้อง
+  if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+    error_log("[MAIL] Skip: invalid email for {$toName}: {$toEmail}");
+    return false;
+  }
+
   $mail = new PHPMailer(true);
   try {
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'valorantwhq2548@gmail.com';     // Gmail ของคุณ
-    $mail->Password   = 'rzwx bonp logd gaug';           // App Password
+    $mail->Username   = 'valorantwhq2548@gmail.com'; // <-- ใส่ Gmail ของคุณ
+    $mail->Password   = 'rzwx bonp logd gaug';       // <-- ใส่ App Password (บัญชีเปิด 2FA แล้ว)
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
     $mail->isHTML(true);
 
-    // ใช้ From เดียวกับ SMTP (กัน DMARC/ SPF)
+    // ใช้ From เดียวกับ SMTP (กัน DMARC/SPF)
     $mail->setFrom('valorantwhq2548@gmail.com', 'CY Arena Booking');
     $mail->addAddress($toEmail, $toName);
 
@@ -77,51 +83,30 @@ function sendEmail($toEmail, $toName, $subject, $html) {
   }
 }
 
-/* ---------- HELPERS ---------- */
-function bookingRow(mysqli $c, int $bookingID) {
-  $sql = "SELECT b.BookingID, b.StartTime, b.EndTime,
-                 c.Email, CONCAT(c.FirstName,' ',c.LastName) AS CustomerName,
-                 v.VenueName,
-                 ps.StatusName AS PayStatus,
-                 b.ConfirmationEmailSent, b.Notification1hSent
-          FROM Tbl_Booking b
-          JOIN Tbl_Customer c ON b.CustomerID = c.CustomerID
-          JOIN Tbl_Venue v    ON v.VenueID    = b.VenueID
-          JOIN Tbl_Payment_Status ps ON ps.PaymentStatusID = b.PaymentStatusID
-          WHERE b.BookingID=? LIMIT 1";
-  $st = $c->prepare($sql);
-  $st->bind_param("i",$bookingID);
-  $st->execute(); $rs = $st->get_result();
-  $row = $rs ? $rs->fetch_assoc() : null;
-  $st->close();
-  return $row;
-}
-
 /* ---------- ALLOWED "PAID" NAMES (TH/EN) ---------- */
-$PAID_NAMES = ["paid","paid_confirmed","ชำระเงินสำเร็จ","ชำระเงินแล้ว"];
+$PAID_NAMES_SQL = "'paid','paid_confirmed','ชำระเงินสำเร็จ','ชำระเงินแล้ว'";
 
 /* ---------- MODE 1: CONFIRMATION TRIGGER ---------- */
 if (isset($_GET['booking_id']) && ctype_digit($_GET['booking_id'])) {
   $bookingID = (int)$_GET['booking_id'];
 
-  // ใช้รายชื่อสถานะชำระเงินที่อนุญาตแบบคงที่ใน SQL
   $q = "SELECT b.BookingID, b.StartTime, b.EndTime,
                c.Email, CONCAT(c.FirstName,' ',c.LastName) AS CustomerName,
-               v.VenueName,
-               ps.StatusName AS PayStatus
+               v.VenueName
         FROM Tbl_Booking b
         JOIN Tbl_Customer c ON b.CustomerID = c.CustomerID
         JOIN Tbl_Venue v    ON v.VenueID    = b.VenueID
         JOIN Tbl_Payment_Status ps ON ps.PaymentStatusID = b.PaymentStatusID
         WHERE b.BookingID = ?
           AND b.BookingStatusID = 2
-          AND ps.StatusName IN ('paid','paid_confirmed','ชำระเงินสำเร็จ','ชำระเงินแล้ว')
+          AND ps.StatusName IN ($PAID_NAMES_SQL)
           AND b.ConfirmationEmailSent = 0
         LIMIT 1";
   $st = $conn->prepare($q);
   if (!$st) { http_response_code(500); die("DB prepare failed"); }
   $st->bind_param("i",$bookingID);
   $st->execute(); $rs = $st->get_result();
+
   if ($row = $rs->fetch_assoc()) {
     $ok = sendEmail(
       $row['Email'],
@@ -135,6 +120,7 @@ if (isset($_GET['booking_id']) && ctype_digit($_GET['booking_id'])) {
          <li><strong>สิ้นสุด:</strong> ".date('d/m/Y H:i',strtotime($row['EndTime']))." น.</li>
        </ul>"
     );
+
     if ($ok) {
       $u = $conn->prepare("UPDATE Tbl_Booking SET ConfirmationEmailSent=1 WHERE BookingID=?");
       $u->bind_param("i",$bookingID); $u->execute(); $u->close();
@@ -151,9 +137,9 @@ if (isset($_GET['booking_id']) && ctype_digit($_GET['booking_id'])) {
 }
 
 /* ---------- MODE 2: 1-HOUR REMINDER (CRON) ---------- */
-/* ขยายหน้าต่างเวลาให้ครอบคลุมความคลาดเคลื่อนของ cron */
-$winStart = date('Y-m-d H:i:00', strtotime('+60 minutes'));
-$winEnd   = date('Y-m-d H:i:59', strtotime('+66 minutes'));
+/* หน้าต่างเวลา 1 ชม.ล่วงหน้า + buffer กันคลาดเคลื่อน */
+$winStart = date('Y-m-d H:i:00', strtotime('+60 minutes')); // เริ่ม 60 นาทีจากตอนนี้
+$winEnd   = date('Y-m-d H:i:59', strtotime('+66 minutes')); // เผื่อคลาดเคลื่อนถึง 66 นาที
 
 $sql = "SELECT b.BookingID, b.StartTime, b.EndTime,
                c.Email, CONCAT(c.FirstName,' ',c.LastName) AS CustomerName,
@@ -163,7 +149,7 @@ $sql = "SELECT b.BookingID, b.StartTime, b.EndTime,
         JOIN Tbl_Venue v    ON v.VenueID    = b.VenueID
         JOIN Tbl_Payment_Status ps ON ps.PaymentStatusID = b.PaymentStatusID
         WHERE b.BookingStatusID = 2
-          AND ps.StatusName IN ('paid','paid_confirmed','ชำระเงินสำเร็จ','ชำระเงินแล้ว')
+          AND ps.StatusName IN ($PAID_NAMES_SQL)
           AND b.Notification1hSent = 0
           AND b.StartTime >= ? AND b.StartTime <= ?
         LIMIT 500";
@@ -186,7 +172,9 @@ while ($row = $rs->fetch_assoc()) {
     $u = $conn->prepare("UPDATE Tbl_Booking SET Notification1hSent=1 WHERE BookingID=?");
     $u->bind_param("i",$row['BookingID']); $u->execute(); $u->close();
     $sent++;
-  } else { $fail++; }
+  } else { 
+    $fail++; 
+  }
 }
 $st->close();
 $conn->close();
