@@ -614,11 +614,11 @@ const pricePerHour = <?php echo (float)$venue['PricePerHour']; ?>;
 
 // 🔗 ตัวแปรสำหรับเก็บ DOM Elements และค่าคงที่ (Global Scope)
 let dateEl, hh12El, mmEl, apEl, startHidden, hoursEl, endDisp, endHidden, startHelp, endHelp, submitBtn;
-let open24, close24, totalPriceEl;
+let open24, close24, closeMinutes, totalPriceEl;
 let basePriceEl, discountRowEl, discountEl, netPriceEl;
 
 
-/* Time & Booking Logic (Utility Functions - คงเดิม) */
+/* Time & Booking Logic (Utility Functions) */
 function pad2(n){ return String(n).padStart(2,'0'); }
 function to12(hhmm){
   let [h,m]=hhmm.split(':').map(Number);
@@ -651,9 +651,14 @@ function nowHHMM(){
   const d=new Date();
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
+// ⏱️ เพิ่ม: แปลงเวลาเป็น "นาทีตั้งแต่ 00:00"
+function toMinutes(hhmm){
+  const [h,m]=hhmm.split(':').map(Number);
+  return h*60+m;
+}
 
 // ----------------------------------------------------------------
-// ⭐ computeEnd() ถูกย้ายมา Global Scope เพื่อให้ checkPromotion เรียกใช้ได้
+// ⭐ computeEnd() อยู่ Global
 // ----------------------------------------------------------------
 function computeEnd(){
   if (!startHidden) return; 
@@ -676,12 +681,11 @@ function computeEnd(){
   endHidden.value = end24;
   endDisp.value = to12(end24);
   
-  // 💰 คำนวดราคาต้นทุน
+  // 💰 คำนวณราคา
   let basePrice = hrs * pricePerHour;
   let finalPrice = basePrice;
   let discountAmount = 0;
   
-  // 🎁 คำนวดส่วนลดถ้ามีโปรโมชั่น
   if (currentPromoData) {
     if (currentPromoData.discount_type === 'percent') {
       discountAmount = basePrice * (currentPromoData.discount_value / 100);
@@ -694,7 +698,6 @@ function computeEnd(){
     discountAmount = basePrice - finalPrice;
   }
   
-  // ✅ อัปเดตการแสดงผล
   totalPriceEl.value = finalPrice.toFixed(2);
   basePriceEl.textContent = '฿' + basePrice.toFixed(2);
   netPriceEl.textContent = '฿' + finalPrice.toFixed(2);
@@ -706,8 +709,9 @@ function computeEnd(){
     discountRowEl.style.display = 'none';
   }
 
-  // ตรวจสอบเวลาเกินปิดสนาม
-  if (cmpTime(end24, close24) > 0){
+  // ⛔ เปลี่ยนมาเทียบ "นาที" เพื่อรองรับกรณีปิด 00:00 (= 24:00)
+  const endMins = toMinutes(end24);
+  if (endMins > closeMinutes){
     endHelp.innerHTML='<i class="fas fa-exclamation-circle"></i> เวลาเสร็จสิ้นเกินเวลาปิดสนาม โปรดปรับเวลาเริ่มหรือจำนวนชั่วโมง';
     endHelp.classList.add('error');
     submitBtn.disabled = true;
@@ -715,9 +719,8 @@ function computeEnd(){
 }
 
 // ----------------------------------------------------------------
-// ฟังก์ชันตรวจสอบโปรโมชั่น (แก้ไขให้เรียก computeEnd ที่ Global)
+// ฟังก์ชันตรวจสอบโปรโมชั่น
 // ----------------------------------------------------------------
-// อัพเดตฟังก์ชัน checkPromotion() ใน booking.php
 function checkPromotion() {
   const code = document.getElementById('promoCode').value.trim();
   const resultEl = document.getElementById('promoResult');
@@ -733,7 +736,6 @@ function checkPromotion() {
     return;
   }
   
-  // ✅ ส่งข้อมูลวันที่และเวลาไปด้วย
   const params = new URLSearchParams({
     code: code,
     booking_date: booking_date,
@@ -746,7 +748,6 @@ function checkPromotion() {
       if (data.valid) {
         currentPromoData = data;
         
-        // แสดงข้อความตามประเภทเงื่อนไข
         let conditionMsg = '';
         if (data.condition_type === 'first_booking') {
           conditionMsg = ' <span style="color:#16a34a;">✓ การจองครั้งแรกของคุณ</span>';
@@ -779,15 +780,14 @@ function checkPromotion() {
     });
 }
 
-// ✅ เพิ่ม: เมื่อเปลี่ยนเวลา ให้ตรวจสอบโปรโมชั่นใหม่ (ถ้ามีโค้ดอยู่แล้ว)
+// ✅ ตรวจโปรโมชันอัตโนมัติเมื่อเวลา/วันที่เปลี่ยน
 function recheckPromoIfNeeded() {
   const code = document.getElementById('promoCode').value.trim();
   if (code) {
-    checkPromotion(); // ตรวจสอบใหม่
+    checkPromotion();
   }
 }
 
-// เพิ่ม Event Listeners เมื่อเปลี่ยนเวลา
 document.addEventListener('DOMContentLoaded', function() {
   const timeSelects = ['hh12', 'mm', 'ampm'];
   timeSelects.forEach(id => {
@@ -804,7 +804,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ----------------------------------------------------------------
-// IIFE (สำหรับ Initialization และ Event Handlers)
+// IIFE (Initialization & Event Handlers)
 // ----------------------------------------------------------------
 (function(){
   // 1. กำหนดค่าให้ตัวแปร Global
@@ -827,6 +827,10 @@ document.addEventListener('DOMContentLoaded', function() {
   discountRowEl = document.getElementById('discount_row');
   discountEl = document.getElementById('discount_display');
   netPriceEl = document.getElementById('net_price_display');
+
+  // ⏱️ เพิ่ม: กำหนด closeMinutes (ถ้าปิด 00:00 ให้เป็น 24:00 = 1440 นาที)
+  closeMinutes = toMinutes(close24);
+  if (close24 === '00:00') closeMinutes = 24*60;
 
   function buildStaticLists(){
     hh12El.innerHTML = '<option value="">--</option>';
@@ -852,7 +856,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (dateEl.value === todayStr){
       let minStart = roundUpTo30(nowHHMM());
       if (cmpTime(minStart, open24) < 0) minStart = open24;
-      if (cmpTime(minStart, close24) >= 0) {
+
+      // ⛔ เปลี่ยนเงื่อนไขให้เทียบ "นาที" กับเวลาปิด
+      if (toMinutes(minStart) >= closeMinutes) {
         startHelp.innerHTML = '<i class="fas fa-exclamation-circle"></i> วันนี้จองไม่ได้แล้ว (เลยเวลาปิด) โปรดเลือกวันถัดไป';
         startHelp.classList.add('error');
         submitBtn.disabled = true;
@@ -892,9 +898,11 @@ document.addEventListener('DOMContentLoaded', function() {
       computeEnd();
       return;
     }
-    
-    if (cmpTime(st24, close24) >= 0) {
-      startHelp.innerHTML = `<i class="fas fa-exclamation-circle"></i> เวลาเริ่มต้องก่อนเวลาปิดสนาม (${to12(close24)})`;
+
+    // ⛔ เปลี่ยนจาก cmpTime(st24, close24) เป็นเทียบนาที เพื่อรองรับปิด 00:00
+    if (toMinutes(st24) >= closeMinutes) {
+      const closeShow = (close24 === '00:00') ? '00:00' : close24;
+      startHelp.innerHTML = `<i class="fas fa-exclamation-circle"></i> เวลาเริ่มต้องก่อนเวลาปิดสนาม (${to12(closeShow)})`;
       startHelp.classList.add('error');
       submitBtn.disabled = true;
       startHidden.value = '';
